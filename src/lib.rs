@@ -40,16 +40,16 @@ impl Gtid {
         Gtid { sid_gno, intervals }
     }
 
-    fn add_interval(&mut self, interval: (u64, u64)) -> Result<(), GtidError> {
+    fn add_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
         if interval.0 > interval.1 {
             return Err(GtidError::IntervalBadlyOrdered);
         }
 
-        if self.intervals.iter().any(|&x| overlap(x, interval)) {
+        if self.intervals.iter().any(|x| overlap(x, interval)) {
             return Err(GtidError::OverlapingInterval);
         }
 
-        let mut interval = interval;
+        let mut interval = *interval;
         self.intervals.sort();
         // TODO: Do it in place with a filter.
         let mut new: Vec<(u64, u64)> = Vec::with_capacity(self.intervals.len());
@@ -73,13 +73,13 @@ impl Gtid {
     }
 
     /// Remove an interval from intervals.
-    pub fn sub_interval(&mut self, interval: (u64, u64)) -> Result<(), GtidError> {
+    pub fn sub_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
         if interval.0 > interval.1 {
             return Err(GtidError::IntervalBadlyOrdered);
         }
 
         // Nothing to do in this case.
-        if !self.intervals.iter().any(|&x| overlap(x, interval)) {
+        if !self.intervals.iter().any(|x| overlap(x, interval)) {
             return Ok(());
         }
 
@@ -87,7 +87,7 @@ impl Gtid {
         // TODO: Do it in place with a filter.
         let mut new: Vec<(u64, u64)> = Vec::with_capacity(self.intervals.len());
         for current in self.intervals.iter() {
-            if overlap(*current, interval) {
+            if overlap(current, interval) {
                 if current.0 < interval.0 {
                     new.push((current.0, interval.0));
                 }
@@ -112,20 +112,20 @@ impl Gtid {
         other
             .intervals
             .iter()
-            .all(|them| self.intervals.iter().any(|me| contains(*me, *them)))
+            .all(|them| self.intervals.iter().any(|me| contains(me, them)))
     }
 
     /// Merge two transactions interval
-    pub fn include_transaction(mut self, other: Gtid) -> Result<Gtid, GtidError> {
+    pub fn include_transactions(&mut self, other: &Gtid) -> Result<(), GtidError> {
         if self.sid_gno != other.sid_gno {
             return Err(GtidError::SidNotMatching);
         }
 
-        for interval in other.intervals {
+        for interval in other.intervals.iter() {
             self.add_interval(interval)?;
         }
 
-        Ok(self)
+        Ok(())
     }
 
     pub fn parse<R: io::Read>(mut reader: R) -> io::Result<Gtid> {
@@ -193,12 +193,12 @@ impl Gtid {
 }
 
 #[inline]
-fn overlap(x: (u64, u64), y: (u64, u64)) -> bool {
+fn overlap(x: &(u64, u64), y: &(u64, u64)) -> bool {
     x.0 < y.1 && x.1 > y.0
 }
 
 #[inline]
-fn contains(x: (u64, u64), y: (u64, u64)) -> bool {
+fn contains(x: &(u64, u64), y: &(u64, u64)) -> bool {
     y.0 >= x.0 && y.1 <= x.1
 }
 
@@ -347,17 +347,17 @@ mod test {
     #[test]
     fn test_add_interval() {
         let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
-        gtid.add_interval((58, 60)).unwrap();
+        gtid.add_interval(&(58, 60)).unwrap();
         assert_eq!(gtid.intervals, [(1, 57), (58, 60)]);
-        gtid.add_interval((57, 58)).unwrap();
+        gtid.add_interval(&(57, 58)).unwrap();
         assert_eq!(gtid.intervals, [(1, 60)]);
     }
 
     #[test]
     fn test_include_interval() {
-        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
         let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:58-59").unwrap();
-        let gtid = gtid.include_transaction(other).unwrap();
+        gtid.include_transactions(&other).unwrap();
         assert_eq!(gtid.intervals, [(1, 57), (58, 60)])
     }
 
