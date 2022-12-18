@@ -2,6 +2,8 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
+mod gtid_set;
+
 use std::io::Write;
 use std::{
     error::Error,
@@ -265,6 +267,13 @@ impl TryFrom<&str> for Gtid {
 }
 
 impl Debug for Gtid {
+    /// A representation for debug purpose.
+    ///
+    /// Considers it not future proof will print something like:
+    ///
+    /// ```txt
+    /// Gtid { sid_gno: "57b70f4e-20d3-11e5-a393-4a63946f7eac", intervals: [ (1, 57), ] }
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
         let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
@@ -278,6 +287,13 @@ impl Debug for Gtid {
 }
 
 impl Display for Gtid {
+    /// A human friendly representation of a `Gtid`
+    ///
+    /// Format is still subject to changes.
+    ///
+    /// ```txt
+    /// 57b70f4e-20d3-11e5-a393-4a63946f7eac:1-57:59-61
+    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
         let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
