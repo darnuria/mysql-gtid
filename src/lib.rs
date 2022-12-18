@@ -2,11 +2,8 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
-use regex;
 use std::io::Write;
 use std::{error::Error, fmt::Display, io};
-
-use hex;
 
 /// Get a regex initialized once.
 /// from https://docs.rs/once_cell/latest/once_cell/
@@ -72,7 +69,7 @@ impl Gtid {
     }
 
     /// Remove an interval from intervals.
-    fn sub_interval(&mut self, interval: (u64, u64)) -> Result<(), GtidError> {
+    pub fn sub_interval(&mut self, interval: (u64, u64)) -> Result<(), GtidError> {
         if interval.0 > interval.1 {
             return Err(GtidError::IntervalBadlyOrdered);
         }
@@ -167,8 +164,7 @@ impl Gtid {
         let sid_gno: [u8; 32] = self
             .sid_gno
             .iter()
-            .filter(|&&c| c != b'-')
-            .map(|x| *x)
+            .filter(|&&c| c != b'-').copied()
             .collect::<Vec<u8>>()
             .try_into()
             .unwrap();
@@ -212,7 +208,7 @@ pub enum GtidError {
 impl Error for GtidError {}
 impl Display for GtidError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -249,7 +245,7 @@ impl TryFrom<&str> for Gtid {
         let intervals = cap.get(2).map_or_else(Vec::new, |intervals| {
             intervals
                 .as_str()
-                .split(":")
+                .split(':')
                 .skip(1)
                 .filter_map(|x| parse_interval(x).ok())
                 .collect::<Vec<_>>()
@@ -269,9 +265,9 @@ struct GtidSet {}
 
 #[cfg(test)]
 mod test {
-    use std::io::{BufReader, Cursor};
+    use std::io::{Cursor};
 
-    use crate::gtid::Gtid;
+    use crate::Gtid;
 
     use super::parse_interval;
 
