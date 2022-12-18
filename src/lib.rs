@@ -134,15 +134,15 @@ impl Gtid {
         hex::encode_to_slice(sid_gno, &mut out).map_err(|_| io::ErrorKind::InvalidInput)?;
         let mut sid_gno = [0u8; 36];
         let mut writer = &mut sid_gno[..];
-        writer.write(&out[0..8])?;
-        writer.write(b"-")?;
-        writer.write(&out[8..12])?;
-        writer.write(b"-")?;
-        writer.write(&out[12..16])?;
-        writer.write(b"-")?;
-        writer.write(&out[16..20])?;
-        writer.write(b"-")?;
-        writer.write(&out[20..32])?;
+        writer.write_all(&out[0..8])?;
+        writer.write_all(b"-")?;
+        writer.write_all(&out[8..12])?;
+        writer.write_all(b"-")?;
+        writer.write_all(&out[12..16])?;
+        writer.write_all(b"-")?;
+        writer.write_all(&out[16..20])?;
+        writer.write_all(b"-")?;
+        writer.write_all(&out[20..32])?;
 
         let mut interval_len = [0u8; 8];
         reader.read_exact(&mut interval_len)?;
@@ -176,15 +176,15 @@ impl Gtid {
         hex::decode_to_slice(sid_gno, &mut sid_gno_bin).map_err(|_| io::ErrorKind::InvalidInput)?;
 
         // Sid+gno encoded.
-        writer.write(&sid_gno_bin)?;
+        writer.write_all(&sid_gno_bin)?;
 
         // Encode in little endian the len
-        writer.write(&(self.intervals.len() as u64).to_le_bytes())?;
+        writer.write_all(&(self.intervals.len() as u64).to_le_bytes())?;
 
         // Encode the intervals itselfs in little endian (start, stop)
         for (start, end) in self.intervals.iter() {
-            writer.write(&start.to_le_bytes())?;
-            writer.write(&end.to_le_bytes())?;
+            writer.write_all(&start.to_le_bytes())?;
+            writer.write_all(&end.to_le_bytes())?;
         }
         Ok(())
     }
@@ -268,9 +268,9 @@ impl Debug for Gtid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
         let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
-        write!(f, "Gtid {{ sid_gno: \"{}\", intervals: [ ", sid_gno)?;
+        write!(f, "Gtid {{ sid_gno: \"{sid_gno}\", intervals: [ ")?;
         for interval in self.intervals.iter() {
-            write!(f, "{:?}, ", interval)?;
+            write!(f, "{interval:?}, ")?;
         }
         write!(f, "] }}")?;
         Ok(())
@@ -281,7 +281,7 @@ impl Display for Gtid {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
         let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
-        write!(f, "{}", sid_gno)?;
+        write!(f, "{sid_gno}")?;
 
         let len = self.intervals.len();
         for (n, (start, end)) in self.intervals.iter().enumerate() {
