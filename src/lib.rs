@@ -10,9 +10,7 @@ use std::{error::Error, fmt::Display, io};
 macro_rules! regex {
     ($re:literal $(,)?) => {{
         static RE: once_cell::sync::OnceCell<regex::Regex> = once_cell::sync::OnceCell::new();
-        RE.get_or_init(|| {
-            regex::Regex::new($re).expect("Unable to compile regex.")
-        })
+        RE.get_or_init(|| regex::Regex::new($re).expect("Unable to compile regex."))
     }};
 }
 
@@ -164,7 +162,8 @@ impl Gtid {
         let sid_gno: [u8; 32] = self
             .sid_gno
             .iter()
-            .filter(|&&c| c != b'-').copied()
+            .filter(|&&c| c != b'-')
+            .copied()
             .collect::<Vec<u8>>()
             .try_into()
             .unwrap();
@@ -265,7 +264,7 @@ struct GtidSet {}
 
 #[cfg(test)]
 mod test {
-    use std::io::{Cursor};
+    use std::io::Cursor;
 
     use crate::Gtid;
 
