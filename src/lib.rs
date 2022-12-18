@@ -3,7 +3,11 @@
 // Licence MIT + APACHE 2.
 
 use std::io::Write;
-use std::{error::Error, fmt::Display, io};
+use std::{
+    error::Error,
+    fmt::{Debug, Display},
+    io,
+};
 
 /// Get a regex initialized once.
 /// from https://docs.rs/once_cell/latest/once_cell/
@@ -14,7 +18,7 @@ macro_rules! regex {
     }};
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct Gtid {
     sid_gno: [u8; 36], // 32 + 4 '-'
     intervals: Vec<(u64, u64)>,
@@ -258,6 +262,37 @@ impl TryFrom<&str> for Gtid {
     }
 
     type Error = GtidError;
+}
+
+impl Debug for Gtid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
+        let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
+        write!(f, "Gtid {{ sid_gno: \"{}\", intervals: [ ", sid_gno)?;
+        for interval in self.intervals.iter() {
+            write!(f, "{:?}, ", interval)?;
+        }
+        write!(f, "] }}")?;
+        Ok(())
+    }
+}
+
+impl Display for Gtid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
+        let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
+        write!(f, "{}", sid_gno)?;
+
+        let len = self.intervals.len();
+        for (n, (start, end)) in self.intervals.iter().enumerate() {
+            // TODO is it mandatory to do "excluded range" ?
+            write!(f, "{}-{}", start, end - 1)?;
+            if n != len - 1 {
+                write!(f, ":")?
+            }
+        }
+        Ok(())
+    }
 }
 
 struct GtidSet {}
