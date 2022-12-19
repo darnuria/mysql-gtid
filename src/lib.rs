@@ -4,6 +4,8 @@
 
 mod gtid_set;
 
+pub use gtid_set::GtidSet;
+
 use std::io::Write;
 use std::{
     error::Error,
@@ -20,7 +22,7 @@ macro_rules! regex {
     }};
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Gtid {
     sid_gno: [u8; 36], // 32 + 4 '-'
     intervals: Vec<(u64, u64)>,
@@ -323,8 +325,6 @@ impl Display for Gtid {
         Ok(())
     }
 }
-
-struct GtidSet {}
 
 #[cfg(test)]
 mod test {
