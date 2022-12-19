@@ -14,15 +14,6 @@ use std::{
     io,
 };
 
-/// Get a regex initialized once.
-/// from https://docs.rs/once_cell/latest/once_cell/
-macro_rules! regex {
-    ($re:literal $(,)?) => {{
-        static RE: once_cell::sync::OnceCell<regex::Regex> = once_cell::sync::OnceCell::new();
-        RE.get_or_init(|| regex::Regex::new($re).expect("Unable to compile regex."))
-    }};
-}
-
 /// A MySql GTID
 ///
 /// https://dev.mysql.com/doc/refman/5.7/en/replication-gtids-concepts.html
@@ -253,20 +244,22 @@ impl Display for GtidError {
 /// let interval = parse_interval("1-56").unwrap()
 /// assert_eq!(interval, (1, 56))
 /// ```
-/// TODO work without regex.
-/// TODO: Think about using range.
 fn parse_interval(interval: &str) -> Result<(u64, u64), GtidError> {
-    let re = regex!("^([0-9]+)(?:-([0-9]+))?$");
-    let cap = re.captures(interval).ok_or(GtidError::ParseError)?;
+    // Nom of the poor.
+    let mut iter = interval.split('-');
+    let start = iter.next().ok_or(GtidError::ParseError)?;
+    let start = start.parse::<u64>().map_err(|_| GtidError::ParseError)?;
 
-    // already checked that it's only number above.
-    let start = cap.get(1).unwrap().as_str().parse::<u64>().unwrap();
-    let end = cap.get(2).map_or_else(
-        || start,
-        |interval| interval.as_str().parse::<u64>().unwrap(),
-    );
+    let end = iter.next().map_or_else(
+        || Ok(start),
+        |end| end.parse::<u64>().map_err(|_| GtidError::ParseError),
+    )?;
+
     if start == 0 || end == 0 {
         return Err(GtidError::ZeroInInterval);
+    }
+    if start > end {
+        return Err(GtidError::IntervalBadlyOrdered);
     }
     Ok((start, end + 1))
 }
@@ -438,15 +431,20 @@ impl Ord for Gtid {
 #[cfg(test)]
 mod test {
     use super::parse_interval;
-    use crate::Gtid;
+    use crate::{Gtid, GtidError};
     use std::io::Cursor;
 
     #[test]
     fn test_parse_interval() {
-        let interval = parse_interval("1-56").unwrap();
-        assert_eq!(interval, (1, 57));
-        let interval = parse_interval("1").unwrap();
-        assert_eq!(interval, (1, 2));
+        assert_eq!(parse_interval("1"), Ok((1, 2)));
+        assert_eq!(parse_interval("1-56"), Ok((1, 57)));
+        assert_eq!(parse_interval("-1"), Err(GtidError::ParseError));
+        assert_eq!(parse_interval("1-"), Err(GtidError::ParseError));
+        assert_eq!(parse_interval("0"), Err(GtidError::ZeroInInterval));
+        assert_eq!(parse_interval("0-0"), Err(GtidError::ZeroInInterval));
+        assert_eq!(parse_interval("0-1"), Err(GtidError::ZeroInInterval));
+        assert_eq!(parse_interval("1-0"), Err(GtidError::ZeroInInterval));
+        assert_eq!(parse_interval("58-1"), Err(GtidError::IntervalBadlyOrdered));
     }
 
     #[test]
