@@ -44,6 +44,10 @@ impl Gtid {
     }
 
     fn add_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
+        if interval.0 == 0 || interval.1 == 0 {
+            return Err(GtidError::ZeroInInterval);
+        }
+
         if interval.0 > interval.1 {
             return Err(GtidError::IntervalBadlyOrdered);
         }
@@ -77,6 +81,10 @@ impl Gtid {
 
     /// Remove an interval from intervals.
     pub fn sub_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
+        if interval.0 == 0 || interval.1 == 0 {
+            return Err(GtidError::ZeroInInterval);
+        }
+
         if interval.0 > interval.1 {
             return Err(GtidError::IntervalBadlyOrdered);
         }
