@@ -43,25 +43,31 @@ impl Default for GtidSet {
 
 impl TryFrom<&[Gtid]> for GtidSet {
     fn try_from(array: &[Gtid]) -> Result<GtidSet, GtidError> {
-        let mut gtids: HashMap<SidGnoKey, Gtid> = HashMap::with_capacity(array.len());
+        let gtids: HashMap<SidGnoKey, Gtid> = HashMap::with_capacity(array.len());
+        let mut gtids = GtidSet { gtids };
         for gtid in array {
-            match gtids.get_mut(&SidGnoKey::new(&gtid.sid_gno)) {
-                Some(g) => {
-                    g.include_transactions(gtid)?;
-                }
-                None => {
-                    gtids.insert(SidGnoKey::new(&gtid.sid_gno), gtid.clone());
-                }
-            }
+            gtids.include_gtid(gtid)?
         }
 
-        Ok(GtidSet { gtids })
+        Ok(gtids)
     }
 
     type Error = GtidError;
 }
 
 impl GtidSet {
+    pub fn include_gtid(&mut self, gtid: &Gtid) -> Result<(), GtidError> {
+        match self.gtids.get_mut(&SidGnoKey::new(&gtid.sid_gno)) {
+            Some(g) => {
+                g.include_transactions(gtid)
+            }
+            None => {
+                self.gtids.insert(SidGnoKey::new(&gtid.sid_gno), gtid.clone());
+                Ok(())
+            }
+        }
+    }
+
     pub fn contains(&self, gtid: &Gtid) -> bool {
         let key = &SidGnoKey::new(&gtid.sid_gno);
         match self.gtids.get(key) {
