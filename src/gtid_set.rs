@@ -2,34 +2,15 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
-use std::{collections::HashMap, io::Write};
+use std::collections::HashMap;
 
 use crate::Gtid;
-
-/// Small type to fit in cache.
-/// TODO remove me after slashing the -
-#[derive(Debug, Hash, PartialEq, Eq)]
-struct SidGnoKey([u8; 32]);
-
-impl SidGnoKey {
-    fn new(sid_gno: &[u8]) -> SidGnoKey {
-        let mut key = [0u8; 32];
-        let mut writer = &mut key[..];
-        // Skip the '-'
-        writer.write_all(&sid_gno[0..8]).unwrap();
-        writer.write_all(&sid_gno[9..12]).unwrap();
-        writer.write_all(&sid_gno[13..16]).unwrap();
-        writer.write_all(&sid_gno[17..20]).unwrap();
-        writer.write_all(&sid_gno[21..32]).unwrap();
-        SidGnoKey(key)
-    }
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct GtidSet {
     /// Key: Sid + Gno value Gtid
     /// TODO only keep Intervals in value.
-    gtids: HashMap<SidGnoKey, Gtid>,
+    gtids: HashMap<[u8; 16], Gtid>,
 }
 
 impl Default for GtidSet {
@@ -43,7 +24,7 @@ impl Default for GtidSet {
 
 impl From<&[Gtid]> for GtidSet {
     fn from(array: &[Gtid]) -> GtidSet {
-        let gtids: HashMap<SidGnoKey, Gtid> = HashMap::with_capacity(array.len());
+        let gtids: HashMap<[u8; 16], Gtid> = HashMap::with_capacity(array.len());
         let mut gtids = GtidSet { gtids };
         for gtid in array {
             gtids.include_gtid(gtid);
@@ -54,19 +35,17 @@ impl From<&[Gtid]> for GtidSet {
 
 impl GtidSet {
     pub fn include_gtid(&mut self, gtid: &Gtid) {
-        match self.gtids.get_mut(&SidGnoKey::new(&gtid.sid_gno)) {
+        match self.gtids.get_mut(&gtid.sid_gno) {
             // Unwraping is safe we work on the same sid-gno.
             Some(g) => g.include_transactions(gtid).unwrap(),
             None => {
-                self.gtids
-                    .insert(SidGnoKey::new(&gtid.sid_gno), gtid.clone());
+                self.gtids.insert(gtid.sid_gno, gtid.clone());
             }
         }
     }
 
     pub fn contains_gtid(&self, gtid: &Gtid) -> bool {
-        let key = &SidGnoKey::new(&gtid.sid_gno);
-        match self.gtids.get(key) {
+        match self.gtids.get(&gtid.sid_gno) {
             Some(found) => found.contains(gtid),
             None => false,
         }

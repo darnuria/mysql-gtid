@@ -25,22 +25,26 @@ macro_rules! regex {
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct Gtid {
-    sid_gno: [u8; 36], // 32 + 4 '-'
+    sid_gno: [u8; 16],
     intervals: Vec<(u64, u64)>,
 }
 
 impl Gtid {
-    pub fn raw_gtid_unchecked(sid_gno: [u8; 36]) -> Gtid {
-        Gtid {
+    /// Unsable may be removed.
+    pub fn raw_gtid_unchecked(sid_gno: [u8; 36]) -> Result<Gtid, GtidError> {
+        let sid_gno = parse_uuid(&sid_gno)?;
+
+        Ok(Gtid {
             sid_gno,
             intervals: vec![],
-        }
+        })
     }
 
-    pub fn with_intervals(sid_gno: [u8; 36], intervals: Vec<(u64, u64)>) -> Gtid {
+    fn with_intervals(sid_gno: [u8; 36], intervals: Vec<(u64, u64)>) -> Result<Gtid, GtidError> {
+        let sid_gno = parse_uuid(&sid_gno)?;
         let mut intervals = intervals;
         intervals.sort();
-        Gtid { sid_gno, intervals }
+        Ok(Gtid { sid_gno, intervals })
     }
 
     fn add_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
@@ -156,19 +160,6 @@ impl Gtid {
         // Reading and decoding SID+GNO
         let mut sid_gno = [0u8; 16];
         reader.read_exact(&mut sid_gno)?;
-        let mut out = [0u8; 32];
-        hex::encode_to_slice(sid_gno, &mut out).map_err(|_| io::ErrorKind::InvalidInput)?;
-        let mut sid_gno = [0u8; 36];
-        let mut writer = &mut sid_gno[..];
-        writer.write_all(&out[0..8])?;
-        writer.write_all(b"-")?;
-        writer.write_all(&out[8..12])?;
-        writer.write_all(b"-")?;
-        writer.write_all(&out[12..16])?;
-        writer.write_all(b"-")?;
-        writer.write_all(&out[16..20])?;
-        writer.write_all(b"-")?;
-        writer.write_all(&out[20..32])?;
 
         let mut interval_len = [0u8; 8];
         reader.read_exact(&mut interval_len)?;
@@ -184,25 +175,14 @@ impl Gtid {
             let end = u64::from_le_bytes(end);
             intervals.push((start, end))
         }
-        Ok(Gtid::with_intervals(sid_gno, intervals))
+
+        intervals.sort();
+        Ok(Gtid { sid_gno, intervals })
     }
 
     pub fn serialize<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
-        // TODO: Plz remove those `-` in constructor :facepalm:
-        let sid_gno: [u8; 32] = self
-            .sid_gno
-            .iter()
-            .filter(|&&c| c != b'-')
-            .copied()
-            .collect::<Vec<u8>>()
-            .try_into()
-            .unwrap();
-
-        let mut sid_gno_bin = [0u8; 16];
-        hex::decode_to_slice(sid_gno, &mut sid_gno_bin).map_err(|_| io::ErrorKind::InvalidInput)?;
-
         // Sid+gno encoded.
-        writer.write_all(&sid_gno_bin)?;
+        writer.write_all(&self.sid_gno)?;
 
         // Encode in little endian the len
         writer.write_all(&(self.intervals.len() as u64).to_le_bytes())?;
@@ -261,6 +241,9 @@ fn parse_interval(interval: &str) -> Result<(u64, u64), GtidError> {
         || start,
         |interval| interval.as_str().parse::<u64>().unwrap(),
     );
+    if start == 0 || end == 0 {
+        return Err(GtidError::ZeroInInterval);
+    }
     Ok((start, end + 1))
 }
 
@@ -268,26 +251,79 @@ impl TryFrom<&str> for Gtid {
     /// Parse a GTID from mysql text representation.
     /// TODO: Pass to nom.
     fn try_from(gtid: &str) -> Result<Gtid, GtidError> {
-        let re = regex!("^([0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12})((:?:[0-9-]+)+)?$");
-        let cap = re.captures(gtid).ok_or(GtidError::ParseError)?;
-        let sid_gno = cap.get(1).unwrap().as_str().as_bytes();
-        let intervals = cap.get(2).map_or_else(Vec::new, |intervals| {
-            intervals
-                .as_str()
-                .split(':')
-                .skip(1)
-                .filter_map(|x| parse_interval(x).ok())
-                .collect::<Vec<_>>()
-        });
+        let raw = &gtid.as_bytes().get(0..36).ok_or(GtidError::ParseError)?;
+        let sid_gno = parse_uuid(raw)?;
 
-        // already checked in regex.
-        Ok(Gtid::with_intervals(
-            <[u8; 36]>::try_from(sid_gno).unwrap(),
-            intervals,
-        ))
+        let rest = &gtid[36..];
+        let intervals = rest
+            .split(':')
+            .skip(1)
+            .filter_map(|x| parse_interval(x).ok())
+            .collect::<Vec<_>>();
+
+        Ok(Gtid { sid_gno, intervals })
     }
 
     type Error = GtidError;
+}
+
+fn uuid_bin_to_hex(uuid: [u8; 16]) -> [u8; 36] {
+    let mut sid_gno_bin = [0u8; 32];
+    hex::encode_to_slice(uuid, &mut sid_gno_bin).unwrap();
+
+    let mut sid_gno = [0u8; 36];
+    let mut writer = &mut sid_gno[..];
+    writer.write_all(&sid_gno_bin[0..8]).unwrap();
+    writer.write_all(b"-").unwrap();
+    writer.write_all(&sid_gno_bin[8..12]).unwrap();
+    writer.write_all(b"-").unwrap();
+    writer.write_all(&sid_gno_bin[12..16]).unwrap();
+    writer.write_all(b"-").unwrap();
+    writer.write_all(&sid_gno_bin[16..20]).unwrap();
+    writer.write_all(b"-").unwrap();
+    writer.write_all(&sid_gno_bin[20..32]).unwrap();
+
+    // Serve
+    sid_gno
+}
+
+/// Parses a UUID in the follow form:
+/// ```text
+/// 3E11FA47-71CA-11E1-9E33-C80AA9429562
+/// ```
+///
+/// Into it's binary condensed representation to be cache friendly.
+fn parse_uuid(uuid: &[u8]) -> Result<[u8; 16], GtidError> {
+    // Our GTID uuid shall be 32 bytes of Hex and 4 '-'.
+    if uuid.len() != 36 {
+        return Err(GtidError::ParseError);
+    }
+
+    // Assert that we have `-` in the right places.
+    if uuid[8] != b'-' && uuid[13] != b'-' && uuid[18] != b'-' && uuid[23] != b'-' {
+        return Err(GtidError::ParseError);
+    }
+
+    let mut sid_gno_raw = [0u8; 32];
+    let mut writer = &mut sid_gno_raw[..];
+
+    // Skip the '-'
+    writer.write_all(&uuid[0..8]).unwrap();
+    writer.write_all(&uuid[9..13]).unwrap();
+    writer.write_all(&uuid[14..18]).unwrap();
+    writer.write_all(&uuid[19..23]).unwrap();
+    writer.write_all(&uuid[24..36]).unwrap();
+
+    // If anything is not Hex-digit we fail.
+    if !sid_gno_raw.iter().all(|b| b.is_ascii_hexdigit()) {
+        return Err(GtidError::ParseError);
+    }
+
+    // Everything is fine let's encode into binary!
+    let mut sid_gno = [0u8; 16];
+    hex::decode_to_slice(sid_gno_raw, &mut sid_gno).map_err(|_| GtidError::ParseError)?;
+
+    Ok(sid_gno)
 }
 
 impl Debug for Gtid {
@@ -300,7 +336,12 @@ impl Debug for Gtid {
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
-        let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
+
+        // Let get something like
+        // 3E11FA47-71CA-11E1-9E33-C80AA9429562
+        let sid_gno = uuid_bin_to_hex(self.sid_gno);
+
+        let sid_gno = std::str::from_utf8(&sid_gno).unwrap();
         write!(f, "Gtid {{ sid_gno: \"{sid_gno}\", intervals: [ ")?;
         for interval in self.intervals.iter() {
             write!(f, "{interval:?}, ")?;
@@ -320,16 +361,13 @@ impl Display for Gtid {
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
-        let sid_gno = std::str::from_utf8(&self.sid_gno).unwrap();
+        let sid_gno = uuid_bin_to_hex(self.sid_gno);
+        let sid_gno = std::str::from_utf8(&sid_gno).unwrap();
         write!(f, "{sid_gno}")?;
 
-        let len = self.intervals.len();
-        for (n, (start, end)) in self.intervals.iter().enumerate() {
+        for (start, end) in self.intervals.iter() {
             // TODO is it mandatory to do "excluded range" ?
-            write!(f, "{}-{}", start, end - 1)?;
-            if n != len - 1 {
-                write!(f, ":")?
-            }
+            write!(f, ":{}-{}", start, end - 1)?;
         }
         Ok(())
     }
@@ -372,13 +410,13 @@ mod test {
 
     #[test]
     fn test_parse_gtid() {
-        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac").unwrap();
+        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac");
         assert_eq!(
             gtid,
             Gtid::raw_gtid_unchecked(*b"57b70f4e-20d3-11e5-a393-4a63946f7eac")
         );
 
-        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56");
         assert_eq!(
             gtid,
             Gtid::with_intervals(*b"57b70f4e-20d3-11e5-a393-4a63946f7eac", vec!((1, 57)))
@@ -404,7 +442,7 @@ mod test {
 
     #[test]
     fn test_encode_decode() {
-        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:59-69").unwrap();
         let mut buffer = Vec::with_capacity(64);
         gtid.serialize(&mut buffer).unwrap();
         let decoded = Gtid::parse(Cursor::new(buffer)).unwrap();
@@ -447,5 +485,15 @@ mod test {
 
         let other = Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac").unwrap();
         assert!(!gtid.eq(&other));
+    }
+
+    #[test]
+    fn test_display_debug() {
+        let gtid_string = "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:58-60";
+        let gtid = Gtid::try_from(gtid_string).unwrap();
+
+        assert_eq!(gtid_string, gtid.to_string());
+        let debug = format!("{gtid:?}");
+        assert_eq!("Gtid { sid_gno: \"57b70f4e-20d3-11e5-a393-4a63946f7eac\", intervals: [ (1, 57), (58, 61), ] }", debug);
     }
 }
