@@ -58,11 +58,10 @@ impl TryFrom<&[Gtid]> for GtidSet {
 impl GtidSet {
     pub fn include_gtid(&mut self, gtid: &Gtid) -> Result<(), GtidError> {
         match self.gtids.get_mut(&SidGnoKey::new(&gtid.sid_gno)) {
-            Some(g) => {
-                g.include_transactions(gtid)
-            }
+            Some(g) => g.include_transactions(gtid),
             None => {
-                self.gtids.insert(SidGnoKey::new(&gtid.sid_gno), gtid.clone());
+                self.gtids
+                    .insert(SidGnoKey::new(&gtid.sid_gno), gtid.clone());
                 Ok(())
             }
         }
