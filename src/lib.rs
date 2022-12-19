@@ -23,9 +23,14 @@ macro_rules! regex {
     }};
 }
 
+/// A MySql GTID
+///
+/// https://dev.mysql.com/doc/refman/5.7/en/replication-gtids-concepts.html
 #[derive(PartialEq, Eq, Clone)]
 pub struct Gtid {
+    /// The UUID in binary forms caches line welcomes you.
     sid_gno: [u8; 16],
+    /// The intervals shall be sorted.
     intervals: Vec<(u64, u64)>,
 }
 
@@ -40,13 +45,19 @@ impl Gtid {
         })
     }
 
-    fn with_intervals(sid_gno: [u8; 36], intervals: Vec<(u64, u64)>) -> Result<Gtid, GtidError> {
+    /// Unsable may be removed.
+    /// Interval and UUID shall be correct if not BOUM.
+    pub fn with_intervals(
+        sid_gno: [u8; 36],
+        intervals: Vec<(u64, u64)>,
+    ) -> Result<Gtid, GtidError> {
         let sid_gno = parse_uuid(&sid_gno)?;
         let mut intervals = intervals;
         intervals.sort();
         Ok(Gtid { sid_gno, intervals })
     }
 
+    /// Add a raw interval into the gtid.
     fn add_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
         if interval.0 == 0 || interval.1 == 0 {
             return Err(GtidError::ZeroInInterval);
@@ -130,7 +141,7 @@ impl Gtid {
             .all(|them| self.intervals.iter().any(|me| contains(me, them)))
     }
 
-    /// Merge two transactions interval
+    /// Merge intervals from an other Gtid.
     pub fn include_transactions(&mut self, other: &Gtid) -> Result<(), GtidError> {
         if self.sid_gno != other.sid_gno {
             return Err(GtidError::SidNotMatching);
@@ -143,7 +154,7 @@ impl Gtid {
         Ok(())
     }
 
-    /// Merge two transactions interval
+    /// Remove intervals from an other Gtid.
     pub fn remove_transactions(&mut self, other: &Gtid) -> Result<(), GtidError> {
         if self.sid_gno != other.sid_gno {
             return Err(GtidError::SidNotMatching);
@@ -161,10 +172,14 @@ impl Gtid {
         let mut sid_gno = [0u8; 16];
         reader.read_exact(&mut sid_gno)?;
 
+        // Get the number of interval to read
         let mut interval_len = [0u8; 8];
         reader.read_exact(&mut interval_len)?;
         let interval_len = u64::from_le_bytes(interval_len) as usize;
 
+        // TODO: maybe do something to avoid reading an absurd len?
+
+        // Decode the intervals encoded as u64
         let mut intervals = Vec::with_capacity(interval_len.clamp(4, 64));
         for _ in 0..interval_len {
             let mut start = [0u8; 8];
@@ -176,6 +191,9 @@ impl Gtid {
             intervals.push((start, end))
         }
 
+        // TODO: maybe return an error if not sorted and make a parse_tolerant
+        // function?
+        // Ensure that we are sorted, it should be the case.
         intervals.sort();
         Ok(Gtid { sid_gno, intervals })
     }
@@ -208,10 +226,16 @@ fn contains(x: &(u64, u64), y: &(u64, u64)) -> bool {
 
 #[derive(Debug, PartialEq)]
 pub enum GtidError {
+    /// Sid-Gno UUID where not matching
     SidNotMatching,
+    /// SID-GNO or Interval is in invalid form
     ParseError,
+    /// Intervals overlaps
     OverlapingInterval,
+    /// Interval must be Ordered (sorted)
     IntervalBadlyOrdered,
+    /// Interval shall not contain 0
+    ZeroInInterval,
 }
 
 impl Error for GtidError {}
@@ -249,7 +273,6 @@ fn parse_interval(interval: &str) -> Result<(u64, u64), GtidError> {
 
 impl TryFrom<&str> for Gtid {
     /// Parse a GTID from mysql text representation.
-    /// TODO: Pass to nom.
     fn try_from(gtid: &str) -> Result<Gtid, GtidError> {
         let raw = &gtid.as_bytes().get(0..36).ok_or(GtidError::ParseError)?;
         let sid_gno = parse_uuid(raw)?;
@@ -267,12 +290,18 @@ impl TryFrom<&str> for Gtid {
     type Error = GtidError;
 }
 
+/// Returns a UUID from it's binary form
+///
+/// Panics if binary form is not encodable to ascii.
 fn uuid_bin_to_hex(uuid: [u8; 16]) -> [u8; 36] {
     let mut sid_gno_bin = [0u8; 32];
+
+    // decode back to ascii form
     hex::encode_to_slice(uuid, &mut sid_gno_bin).unwrap();
 
     let mut sid_gno = [0u8; 36];
     let mut writer = &mut sid_gno[..];
+    // Inject those annoying as hell '-'
     writer.write_all(&sid_gno_bin[0..8]).unwrap();
     writer.write_all(b"-").unwrap();
     writer.write_all(&sid_gno_bin[8..12]).unwrap();
@@ -374,6 +403,13 @@ impl Display for Gtid {
 }
 
 impl PartialOrd for Gtid {
+    /// Ordering of GTID follow the following algorithm:
+    ///
+    /// If UUID are equals:
+    ///     Compare intervals
+    /// Else ord is based on UUID ordering.
+    ///
+    /// TODO: Example.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let ord = self.sid_gno.partial_cmp(&other.sid_gno)?;
         match ord {
@@ -384,6 +420,13 @@ impl PartialOrd for Gtid {
 }
 
 impl Ord for Gtid {
+    /// Ordering of GTID follow the following algorithm:
+    ///
+    /// If UUID are equals:
+    ///     Compare intervals
+    /// Else ord is based on UUID ordering.
+    ///
+    /// TODO: Example.
     fn cmp(&self, other: &Self) -> Ordering {
         match self.sid_gno.cmp(&other.sid_gno) {
             ord @ (std::cmp::Ordering::Less | std::cmp::Ordering::Greater) => ord,
