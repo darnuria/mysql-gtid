@@ -128,6 +128,19 @@ impl Gtid {
         Ok(())
     }
 
+    /// Merge two transactions interval
+    pub fn remove_transactions(&mut self, other: &Gtid) -> Result<(), GtidError> {
+        if self.sid_gno != other.sid_gno {
+            return Err(GtidError::SidNotMatching);
+        }
+
+        for interval in other.intervals.iter() {
+            self.sub_interval(interval)?;
+        }
+
+        Ok(())
+    }
+
     pub fn parse<R: io::Read>(mut reader: R) -> io::Result<Gtid> {
         // Reading and decoding SID+GNO
         let mut sid_gno = [0u8; 16];
