@@ -4,7 +4,7 @@
 
 use std::{collections::HashMap, io::Write};
 
-use crate::{Gtid, GtidError};
+use crate::Gtid;
 
 /// Small type to fit in cache.
 /// TODO remove me after slashing the -
@@ -41,28 +41,25 @@ impl Default for GtidSet {
     }
 }
 
-impl TryFrom<&[Gtid]> for GtidSet {
-    fn try_from(array: &[Gtid]) -> Result<GtidSet, GtidError> {
+impl From<&[Gtid]> for GtidSet {
+    fn from(array: &[Gtid]) -> GtidSet {
         let gtids: HashMap<SidGnoKey, Gtid> = HashMap::with_capacity(array.len());
         let mut gtids = GtidSet { gtids };
         for gtid in array {
-            gtids.include_gtid(gtid)?
+            gtids.include_gtid(gtid);
         }
-
-        Ok(gtids)
+        gtids
     }
-
-    type Error = GtidError;
 }
 
 impl GtidSet {
-    pub fn include_gtid(&mut self, gtid: &Gtid) -> Result<(), GtidError> {
+    pub fn include_gtid(&mut self, gtid: &Gtid) {
         match self.gtids.get_mut(&SidGnoKey::new(&gtid.sid_gno)) {
-            Some(g) => g.include_transactions(gtid),
+            // Unwraping is safe we work on the same sid-gno.
+            Some(g) => g.include_transactions(gtid).unwrap(),
             None => {
                 self.gtids
                     .insert(SidGnoKey::new(&gtid.sid_gno), gtid.clone());
-                Ok(())
             }
         }
     }
@@ -96,14 +93,11 @@ mod test {
             Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:57-59").unwrap(),
         ];
         let gtids = GtidSet::try_from(&gtid_array[..]).unwrap();
-        assert!(
-            gtids.contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:57-59").unwrap())
-        );
-        assert!(
-            gtids.contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-2").unwrap())
-        );
-        assert!(
-            !gtids.contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:60-99").unwrap())
-        );
+        assert!(gtids
+            .contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:57-59").unwrap()));
+        assert!(gtids
+            .contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-2").unwrap()));
+        assert!(!gtids
+            .contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:60-99").unwrap()));
     }
 }
