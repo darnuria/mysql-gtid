@@ -67,12 +67,18 @@ impl GtidSet {
         }
     }
 
-    pub fn contains(&self, gtid: &Gtid) -> bool {
+    pub fn contains_gtid(&self, gtid: &Gtid) -> bool {
         let key = &SidGnoKey::new(&gtid.sid_gno);
         match self.gtids.get(key) {
             Some(found) => found.contains(gtid),
             None => false,
         }
+    }
+
+    pub fn contains_gtidset(&self, gtid: &GtidSet) -> bool {
+        gtid.gtids
+            .iter()
+            .all(|(_, value)| self.contains_gtid(value))
     }
 }
 
@@ -91,13 +97,13 @@ mod test {
         ];
         let gtids = GtidSet::try_from(&gtid_array[..]).unwrap();
         assert!(
-            gtids.contains(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:57-59").unwrap())
+            gtids.contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:57-59").unwrap())
         );
         assert!(
-            gtids.contains(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-2").unwrap())
+            gtids.contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-2").unwrap())
         );
         assert!(
-            !gtids.contains(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:60-99").unwrap())
+            !gtids.contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:60-99").unwrap())
         );
     }
 }
