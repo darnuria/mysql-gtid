@@ -77,6 +77,12 @@ impl GtidSet {
             .iter()
             .all(|(_, value)| self.contains_gtid(value))
     }
+
+    pub fn merge(&mut self, other: &GtidSet) {
+        for g in other.gtids.values() {
+            self.include_gtid(g);
+        }
+    }
 }
 
 #[cfg(test)]
