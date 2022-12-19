@@ -437,11 +437,9 @@ impl Ord for Gtid {
 
 #[cfg(test)]
 mod test {
-    use std::io::Cursor;
-
-    use crate::Gtid;
-
     use super::parse_interval;
+    use crate::Gtid;
+    use std::io::Cursor;
 
     #[test]
     fn test_parse_interval() {
