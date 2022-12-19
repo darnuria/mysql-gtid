@@ -6,6 +6,7 @@ mod gtid_set;
 
 pub use gtid_set::GtidSet;
 
+use std::cmp::Ordering;
 use std::io::Write;
 use std::{
     error::Error,
@@ -326,6 +327,25 @@ impl Display for Gtid {
     }
 }
 
+impl PartialOrd for Gtid {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let ord = self.sid_gno.partial_cmp(&other.sid_gno)?;
+        match ord {
+            ord @ (Ordering::Less | Ordering::Greater) => Some(ord),
+            Ordering::Equal => self.intervals.partial_cmp(&other.intervals),
+        }
+    }
+}
+
+impl Ord for Gtid {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.sid_gno.cmp(&other.sid_gno) {
+            ord @ (std::cmp::Ordering::Less | std::cmp::Ordering::Greater) => ord,
+            std::cmp::Ordering::Equal => self.intervals.cmp(&other.intervals),
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::io::Cursor;
@@ -390,5 +410,34 @@ mod test {
 
         assert!(gtid.contains(&other));
         assert!(!other.contains(&gtid));
+    }
+
+    #[test]
+    fn test_ordering() {
+        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:5-10").unwrap();
+        assert!(gtid.lt(&other));
+        assert!(gtid.le(&other));
+        assert!(!gtid.gt(&other));
+        assert!(!gtid.ge(&other));
+        let other = Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:5-10").unwrap();
+        assert!(gtid.le(&other));
+        assert!(!gtid.ge(&other));
+        assert!(gtid.lt(&other));
+        assert!(!gtid.gt(&other));
+
+        let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        assert!(gtid.eq(&other));
+        assert!(!gtid.lt(&other));
+        assert!(gtid.le(&other));
+        assert!(!gtid.gt(&other));
+        assert!(gtid.ge(&other));
+
+        let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac").unwrap();
+        assert!(!gtid.eq(&other));
+
+        let other = Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac").unwrap();
+        assert!(!gtid.eq(&other));
     }
 }
