@@ -36,29 +36,24 @@ impl Gtid {
         })
     }
 
-    /// Unsable may be removed.
-    /// Interval and UUID shall be correct if not BOUM.
+    /// Create a Gtid with intervals.
+    ///
+    /// Intervals will be checked.
     pub fn with_intervals(sid: [u8; 36], intervals: Vec<(u64, u64)>) -> Result<Gtid, GtidError> {
         let sid = parse_uuid(&sid)?;
-        let mut intervals = intervals;
-        intervals.sort();
-        Ok(Gtid { sid, intervals })
+
+        let mut gtid = Gtid {
+            sid,
+            intervals: Vec::with_capacity(intervals.len()),
+        };
+        for interval in intervals {
+            gtid.add_interval(&interval)?;
+        }
+        Ok(gtid)
     }
 
-    /// Add a raw interval into the gtid.
-    fn add_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
-        if interval.0 == 0 || interval.1 == 0 {
-            return Err(GtidError::ZeroInInterval);
-        }
-
-        if interval.0 > interval.1 {
-            return Err(GtidError::IntervalBadlyOrdered);
-        }
-
-        if self.intervals.iter().any(|x| overlap(x, interval)) {
-            return Err(GtidError::OverlapingInterval);
-        }
-
+    /// Add an interval but does not check assume interval is correctly formed
+    fn add_interval_unchecked(&mut self, interval: &(u64, u64)) {
         let mut interval = *interval;
 
         // TODO: Do it in place with a filter.
@@ -79,11 +74,10 @@ impl Gtid {
         new.push(interval);
         new.sort();
         self.intervals = new;
-        Ok(())
     }
 
-    /// Remove an interval from intervals.
-    pub fn sub_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
+    /// Add a raw interval into the gtid.
+    fn add_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
         if interval.0 == 0 || interval.1 == 0 {
             return Err(GtidError::ZeroInInterval);
         }
@@ -92,11 +86,15 @@ impl Gtid {
             return Err(GtidError::IntervalBadlyOrdered);
         }
 
-        // Nothing to do in this case.
-        if !self.intervals.iter().any(|x| overlap(x, interval)) {
-            return Ok(());
+        if self.intervals.iter().any(|x| overlap(x, interval)) {
+            return Err(GtidError::OverlapingInterval);
         }
 
+        self.add_interval_unchecked(interval);
+        Ok(())
+    }
+
+    fn sub_interval_unchecked(&mut self, interval: &(u64, u64)) {
         // TODO: Do it in place with a filter.
         let mut new: Vec<(u64, u64)> = Vec::with_capacity(self.intervals.len());
         for current in self.intervals.iter() {
@@ -114,6 +112,27 @@ impl Gtid {
 
         new.sort();
         self.intervals = new;
+    }
+
+    /// Remove an interval from intervals.
+    ///
+    /// Does not check for Zero in internval, interval badly ordered or overlap.
+    /// Assume interval is well formed.
+    pub fn sub_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
+        if interval.0 == 0 || interval.1 == 0 {
+            return Err(GtidError::ZeroInInterval);
+        }
+
+        if interval.0 > interval.1 {
+            return Err(GtidError::IntervalBadlyOrdered);
+        }
+
+        // Nothing to do in this case.
+        if !self.intervals.iter().any(|x| overlap(x, interval)) {
+            return Ok(());
+        }
+
+        self.sub_interval_unchecked(interval);
         Ok(())
     }
 
@@ -135,7 +154,9 @@ impl Gtid {
         }
 
         for interval in other.intervals.iter() {
-            self.add_interval(interval)?;
+            // We don't need to check for correctness
+            // of interval Gtid is supposed wellformed.
+            self.add_interval_unchecked(interval);
         }
 
         Ok(())
@@ -148,7 +169,8 @@ impl Gtid {
         }
 
         for interval in other.intervals.iter() {
-            self.sub_interval(interval)?;
+            // We assume intervals are OK.
+            self.sub_interval_unchecked(interval);
         }
 
         Ok(())
@@ -227,6 +249,9 @@ pub enum GtidError {
 
 impl Error for GtidError {}
 impl Display for GtidError {
+    /// Return human representation for `GtidError`
+    ///
+    /// Currently use Debug.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
     }
@@ -432,7 +457,7 @@ impl Ord for Gtid {
 mod test {
     use super::{parse_interval, parse_uuid};
     use crate::{Gtid, GtidError};
-    use std::io::Cursor;
+    use std::{cmp::Ordering, io::Cursor};
 
     #[test]
     fn test_parse_interval() {
@@ -497,11 +522,118 @@ mod test {
     }
 
     #[test]
+    fn test_add_interval_bad() {
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        assert_eq!(gtid.add_interval(&(0, 1)), Err(GtidError::ZeroInInterval));
+        assert_eq!(
+            gtid.add_interval(&(59, 51)),
+            Err(GtidError::IntervalBadlyOrdered)
+        );
+
+        assert_eq!(
+            gtid.add_interval(&(50, 51)),
+            Err(GtidError::OverlapingInterval)
+        );
+
+        assert_eq!(gtid.intervals, [(1, 57)]);
+    }
+
+    #[test]
+    fn test_sub_interval_begin() {
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        // Begin
+        gtid.sub_interval(&(1, 2)).unwrap();
+        assert_eq!(gtid.intervals, [(2, 57)],);
+    }
+
+    #[test]
+    fn test_sub_interval_within() {
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        // Begin
+        gtid.sub_interval(&(25, 26)).unwrap();
+        assert_eq!(gtid.intervals, [(1, 25), (26, 57)],);
+    }
+
+    #[test]
+    fn test_sub_interval_end() {
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        gtid.sub_interval(&(50, 57)).unwrap();
+        assert_eq!(gtid.intervals, [(1, 50)],);
+    }
+
+    #[test]
+    fn test_sub_interval_bad() {
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        assert_eq!(gtid.sub_interval(&(0, 1)), Err(GtidError::ZeroInInterval));
+        assert_eq!(
+            gtid.sub_interval(&(59, 51)),
+            Err(GtidError::IntervalBadlyOrdered)
+        );
+    }
+
+    #[test]
+    fn test_sub_interval_nothing_not_overlap() {
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        assert_eq!(gtid.sub_interval(&(0, 1)), Err(GtidError::ZeroInInterval));
+        assert_eq!(gtid.sub_interval(&(60, 70)), Ok(()));
+        assert_eq!(gtid.intervals, [(1, 57)],);
+    }
+
+    #[test]
     fn test_include_interval() {
         let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
         let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:58-59").unwrap();
         gtid.include_transactions(&other).unwrap();
         assert_eq!(gtid.intervals, [(1, 57), (58, 60)])
+    }
+
+    #[test]
+    fn test_remove_interval_end() {
+        // Remove inside
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:56").unwrap();
+        gtid.remove_transactions(&other).unwrap();
+        assert_eq!(gtid.intervals, [(1, 56)]);
+    }
+
+    #[test]
+    fn test_remove_interval_start() {
+        // begin inside
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1").unwrap();
+        gtid.remove_transactions(&other).unwrap();
+        assert_eq!(gtid.intervals, [(2, 57)]);
+    }
+
+    #[test]
+    fn test_remove_interval_within() {
+        // Check with python.
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:25").unwrap();
+        gtid.remove_transactions(&other).unwrap();
+        assert_eq!(gtid.intervals, [(1, 25), (26, 57)]);
+    }
+
+    #[test]
+    fn test_remove_bad_sid() {
+        // Check with python.
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:25").unwrap();
+        assert_eq!(
+            gtid.remove_transactions(&other),
+            Err(GtidError::SidNotMatching)
+        );
+        assert_eq!(gtid.intervals, [(1, 57)]);
+    }
+
+    #[test]
+    fn test_include_interval_fail() {
+        let mut gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("deadbeef-cafe-baba-abab-bad3946f7eac:58-59").unwrap();
+        assert_eq!(
+            gtid.include_transactions(&other),
+            Err(GtidError::SidNotMatching)
+        );
     }
 
     #[test]
@@ -520,6 +652,14 @@ mod test {
 
         assert!(gtid.contains(&other));
         assert!(!other.contains(&gtid));
+    }
+
+    #[test]
+    fn test_contains_not_same_sid() {
+        let gtid = Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        let other = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:5-10").unwrap();
+
+        assert!(!gtid.contains(&other));
     }
 
     #[test]
@@ -552,6 +692,20 @@ mod test {
     }
 
     #[test]
+    fn test_ord() {
+        let gtid = Gtid::try_from("0Ab70f4e-20d3-11e5-a393-4a63946f7eac").unwrap();
+        let other = Gtid::try_from("1Aadbeef-20d3-11e5-a393-4a63946f7eac").unwrap();
+        assert_eq!(gtid.cmp(&other), Ordering::Less);
+        assert_eq!(other.cmp(&gtid), Ordering::Greater);
+        assert_eq!(gtid.cmp(&gtid.clone()), Ordering::Equal);
+
+        let gtid = Gtid::try_from("0Ab70f4e-20d3-11e5-a393-4a63946f7eac:1-5").unwrap();
+        let other = Gtid::try_from("0Ab70f4e-20d3-11e5-a393-4a63946f7eac:6-10").unwrap();
+        assert_eq!(gtid.cmp(&other), Ordering::Less);
+        assert_eq!(other.cmp(&gtid), Ordering::Greater);
+    }
+
+    #[test]
     fn test_display_debug() {
         let gtid_string = "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:58-60";
         let gtid = Gtid::try_from(gtid_string).unwrap();
@@ -564,11 +718,25 @@ mod test {
     #[test]
     #[ignore = "Fix overeading"]
     fn test_parse_fail() {
-        let gtids =
-        "-";
+        let gtids = "-";
         assert!(Gtid::try_from(gtids).is_err());
         let gtids =
         "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
         assert!(Gtid::try_from(gtids).is_err());
+    }
+
+    #[test]
+    #[ignore = "Fix overeading"]
+    fn test_parse_fails() {
+        let gtids =
+            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:0-1";
+        assert_eq!(Gtid::try_from(gtids), Err(GtidError::ZeroInInterval));
+        let gtids =
+            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:2-1";
+        assert_eq!(Gtid::try_from(gtids), Err(GtidError::IntervalBadlyOrdered));
+
+        let gtids =
+        "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-5:2-3";
+        assert_eq!(Gtid::try_from(gtids), Err(GtidError::OverlapingInterval));
     }
 }

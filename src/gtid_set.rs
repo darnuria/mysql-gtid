@@ -135,7 +135,7 @@ mod test {
     use super::GtidSet;
 
     #[test]
-    fn test_include_interval() {
+    fn test_try_from_contains() {
         let gtid_array = [
             Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap(),
             Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-56").unwrap(),
@@ -148,6 +148,36 @@ mod test {
             .contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-2").unwrap()));
         assert!(!gtids
             .contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:60-99").unwrap()));
+
+        // Not in
+        assert!(!gtids
+            .contains_gtid(&Gtid::try_from("cafeBad0-20d3-11e5-a393-4a63946f7eac:1").unwrap()));
+    }
+
+    #[test]
+    fn test_gtidset_contains() {
+        let gtidset = GtidSet::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56,deadbeef-20d3-11e5-a393-4a63946f7eac:1-56,deadbeef-20d3-11e5-a393-4a63946f7eac:57-59").unwrap();
+        let other = GtidSet::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+
+        assert!(gtidset.contains_gtidset(&other));
+        assert!(!other.contains_gtidset(&gtidset));
+    }
+
+    #[test]
+    fn test_gtidset_merge() {
+        let test = "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56,deadbeef-20d3-11e5-a393-4a63946f7eac:1-56,deadbeef-20d3-11e5-a393-4a63946f7eac:57-59";
+        let mut gtidset = GtidSet::try_from(test).unwrap();
+        let other = GtidSet::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:100-101").unwrap();
+
+        gtidset.merge(&other);
+        assert_eq!(gtidset.to_string(), "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56,deadbeef-20d3-11e5-a393-4a63946f7eac:1-59:100-101");
+
+        let mut gtidset = GtidSet::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56").unwrap();
+        gtidset.merge(&GtidSet::default());
+        assert_eq!(
+            gtidset.to_string(),
+            "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56"
+        );
     }
 
     #[test]
@@ -186,10 +216,15 @@ mod test {
     }
 
     #[test]
+    fn test_default() {
+        let gtid_set = GtidSet::default();
+        assert!(gtid_set.gtids.is_empty());
+    }
+
+    #[test]
     #[ignore = "Fix overeading"]
     fn test_parse_fail() {
-        let gtids =
-        "-";
+        let gtids = "-";
         assert!(GtidSet::try_from(gtids).is_err());
         let gtids =
         "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
