@@ -8,7 +8,7 @@ use crate::Gtid;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct GtidSet {
-    /// Key: Sid + Gno value Gtid
+    /// Key: Sid value Gtid
     /// TODO only keep Intervals in value.
     gtids: HashMap<[u8; 16], Gtid>,
 }
@@ -35,17 +35,17 @@ impl From<&[Gtid]> for GtidSet {
 
 impl GtidSet {
     pub fn include_gtid(&mut self, gtid: &Gtid) {
-        match self.gtids.get_mut(&gtid.sid_gno) {
-            // Unwraping is safe we work on the same sid-gno.
+        match self.gtids.get_mut(&gtid.sid) {
+            // Unwraping is safe we work on the same sid
             Some(g) => g.include_transactions(gtid).unwrap(),
             None => {
-                self.gtids.insert(gtid.sid_gno, gtid.clone());
+                self.gtids.insert(gtid.sid, gtid.clone());
             }
         }
     }
 
     pub fn contains_gtid(&self, gtid: &Gtid) -> bool {
-        match self.gtids.get(&gtid.sid_gno) {
+        match self.gtids.get(&gtid.sid) {
             Some(found) => found.contains(gtid),
             None => false,
         }

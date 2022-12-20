@@ -14,38 +14,35 @@ use std::{
     io,
 };
 
-/// A MySql GTID
+/// A MySql GTID: Global Transaction IDentifier.
 ///
 /// https://dev.mysql.com/doc/refman/5.7/en/replication-gtids-concepts.html
 #[derive(PartialEq, Eq, Clone)]
 pub struct Gtid {
     /// The UUID in binary forms caches line welcomes you.
-    sid_gno: [u8; 16],
+    sid: [u8; 16],
     /// The intervals shall be sorted.
     intervals: Vec<(u64, u64)>,
 }
 
 impl Gtid {
     /// Unsable may be removed.
-    pub fn raw_gtid_unchecked(sid_gno: [u8; 36]) -> Result<Gtid, GtidError> {
-        let sid_gno = parse_uuid(&sid_gno)?;
+    pub fn raw_gtid_unchecked(sid: [u8; 36]) -> Result<Gtid, GtidError> {
+        let sid = parse_uuid(&sid)?;
 
         Ok(Gtid {
-            sid_gno,
+            sid,
             intervals: vec![],
         })
     }
 
     /// Unsable may be removed.
     /// Interval and UUID shall be correct if not BOUM.
-    pub fn with_intervals(
-        sid_gno: [u8; 36],
-        intervals: Vec<(u64, u64)>,
-    ) -> Result<Gtid, GtidError> {
-        let sid_gno = parse_uuid(&sid_gno)?;
+    pub fn with_intervals(sid: [u8; 36], intervals: Vec<(u64, u64)>) -> Result<Gtid, GtidError> {
+        let sid = parse_uuid(&sid)?;
         let mut intervals = intervals;
         intervals.sort();
-        Ok(Gtid { sid_gno, intervals })
+        Ok(Gtid { sid, intervals })
     }
 
     /// Add a raw interval into the gtid.
@@ -121,7 +118,7 @@ impl Gtid {
     }
 
     pub fn contains(&self, other: &Gtid) -> bool {
-        if self.sid_gno != other.sid_gno {
+        if self.sid != other.sid {
             return false;
         }
 
@@ -133,7 +130,7 @@ impl Gtid {
 
     /// Merge intervals from an other Gtid.
     pub fn include_transactions(&mut self, other: &Gtid) -> Result<(), GtidError> {
-        if self.sid_gno != other.sid_gno {
+        if self.sid != other.sid {
             return Err(GtidError::SidNotMatching);
         }
 
@@ -146,7 +143,7 @@ impl Gtid {
 
     /// Remove intervals from an other Gtid.
     pub fn remove_transactions(&mut self, other: &Gtid) -> Result<(), GtidError> {
-        if self.sid_gno != other.sid_gno {
+        if self.sid != other.sid {
             return Err(GtidError::SidNotMatching);
         }
 
@@ -158,9 +155,9 @@ impl Gtid {
     }
 
     pub fn parse<R: io::Read>(mut reader: R) -> io::Result<Gtid> {
-        // Reading and decoding SID+GNO
-        let mut sid_gno = [0u8; 16];
-        reader.read_exact(&mut sid_gno)?;
+        // Reading and decoding SID
+        let mut sid = [0u8; 16];
+        reader.read_exact(&mut sid)?;
 
         // Get the number of interval to read
         let mut interval_len = [0u8; 8];
@@ -185,12 +182,12 @@ impl Gtid {
         // function?
         // Ensure that we are sorted, it should be the case.
         intervals.sort();
-        Ok(Gtid { sid_gno, intervals })
+        Ok(Gtid { sid, intervals })
     }
 
     pub fn serialize<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
-        // Sid+gno encoded.
-        writer.write_all(&self.sid_gno)?;
+        // Sid encoded.
+        writer.write_all(&self.sid)?;
 
         // Encode in little endian the len
         writer.write_all(&(self.intervals.len() as u64).to_le_bytes())?;
@@ -216,9 +213,9 @@ fn contains(x: &(u64, u64), y: &(u64, u64)) -> bool {
 
 #[derive(Debug, PartialEq)]
 pub enum GtidError {
-    /// Sid-Gno UUID where not matching
+    /// Sid UUID where not matching
     SidNotMatching,
-    /// SID-GNO or Interval is in invalid form
+    /// SID or Interval is in invalid form
     ParseError,
     /// Intervals overlaps
     OverlapingInterval,
@@ -239,9 +236,8 @@ impl Display for GtidError {
 /// Exemple if given `1,2` will output `(1, 3)`.
 ///
 /// ```ignore
-/// # use parse_interval;
-/// let interval = parse_interval("1-56").unwrap()
-/// assert_eq!(interval, (1, 56))
+/// # use crate::parse_interval;
+/// assert_eq!(parse_interval("1-56"), Ok((1, 56)))
 /// ```
 fn parse_interval(interval: &str) -> Result<(u64, u64), GtidError> {
     // Nom of the poor.
@@ -267,7 +263,7 @@ impl TryFrom<&str> for Gtid {
     /// Parse a GTID from mysql text representation.
     fn try_from(gtid: &str) -> Result<Gtid, GtidError> {
         let raw = &gtid.as_bytes().get(0..36).ok_or(GtidError::ParseError)?;
-        let sid_gno = parse_uuid(raw)?;
+        let sid = parse_uuid(raw)?;
 
         let rest = &gtid[36..];
         let intervals = rest
@@ -276,7 +272,7 @@ impl TryFrom<&str> for Gtid {
             .filter_map(|x| parse_interval(x).ok())
             .collect::<Vec<_>>();
 
-        Ok(Gtid { sid_gno, intervals })
+        Ok(Gtid { sid, intervals })
     }
 
     type Error = GtidError;
@@ -286,26 +282,26 @@ impl TryFrom<&str> for Gtid {
 ///
 /// Panics if binary form is not encodable to ascii.
 fn uuid_bin_to_hex(uuid: [u8; 16]) -> [u8; 36] {
-    let mut sid_gno_bin = [0u8; 32];
+    let mut sid_bin = [0u8; 32];
 
     // decode back to ascii form
-    hex::encode_to_slice(uuid, &mut sid_gno_bin).unwrap();
+    hex::encode_to_slice(uuid, &mut sid_bin).unwrap();
 
-    let mut sid_gno = [0u8; 36];
-    let mut writer = &mut sid_gno[..];
+    let mut sid = [0u8; 36];
+    let mut writer = &mut sid[..];
     // Inject those annoying as hell '-'
-    writer.write_all(&sid_gno_bin[0..8]).unwrap();
+    writer.write_all(&sid_bin[0..8]).unwrap();
     writer.write_all(b"-").unwrap();
-    writer.write_all(&sid_gno_bin[8..12]).unwrap();
+    writer.write_all(&sid_bin[8..12]).unwrap();
     writer.write_all(b"-").unwrap();
-    writer.write_all(&sid_gno_bin[12..16]).unwrap();
+    writer.write_all(&sid_bin[12..16]).unwrap();
     writer.write_all(b"-").unwrap();
-    writer.write_all(&sid_gno_bin[16..20]).unwrap();
+    writer.write_all(&sid_bin[16..20]).unwrap();
     writer.write_all(b"-").unwrap();
-    writer.write_all(&sid_gno_bin[20..32]).unwrap();
+    writer.write_all(&sid_bin[20..32]).unwrap();
 
     // Serve
-    sid_gno
+    sid
 }
 
 /// Parses a UUID in the follow form:
@@ -325,8 +321,8 @@ fn parse_uuid(uuid: &[u8]) -> Result<[u8; 16], GtidError> {
         return Err(GtidError::ParseError);
     }
 
-    let mut sid_gno_raw = [0u8; 32];
-    let mut writer = &mut sid_gno_raw[..];
+    let mut sid_raw = [0u8; 32];
+    let mut writer = &mut sid_raw[..];
 
     // Skip the '-'
     writer.write_all(&uuid[0..8]).unwrap();
@@ -336,15 +332,15 @@ fn parse_uuid(uuid: &[u8]) -> Result<[u8; 16], GtidError> {
     writer.write_all(&uuid[24..36]).unwrap();
 
     // If anything is not Hex-digit we fail.
-    if !sid_gno_raw.iter().all(|b| b.is_ascii_hexdigit()) {
+    if !sid_raw.iter().all(|b| b.is_ascii_hexdigit()) {
         return Err(GtidError::ParseError);
     }
 
     // Everything is fine let's encode into binary!
-    let mut sid_gno = [0u8; 16];
-    hex::decode_to_slice(sid_gno_raw, &mut sid_gno).map_err(|_| GtidError::ParseError)?;
+    let mut sid = [0u8; 16];
+    hex::decode_to_slice(sid_raw, &mut sid).map_err(|_| GtidError::ParseError)?;
 
-    Ok(sid_gno)
+    Ok(sid)
 }
 
 impl Debug for Gtid {
@@ -353,17 +349,17 @@ impl Debug for Gtid {
     /// Considers it not future proof will print something like:
     ///
     /// ```txt
-    /// Gtid { sid_gno: "57b70f4e-20d3-11e5-a393-4a63946f7eac", intervals: [ (1, 57), ] }
+    /// Gtid { sid: "57b70f4e-20d3-11e5-a393-4a63946f7eac", intervals: [ (1, 57), ] }
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
 
         // Let get something like
         // 3E11FA47-71CA-11E1-9E33-C80AA9429562
-        let sid_gno = uuid_bin_to_hex(self.sid_gno);
+        let sid = uuid_bin_to_hex(self.sid);
 
-        let sid_gno = std::str::from_utf8(&sid_gno).unwrap();
-        write!(f, "Gtid {{ sid_gno: \"{sid_gno}\", intervals: [ ")?;
+        let sid = std::str::from_utf8(&sid).unwrap();
+        write!(f, "Gtid {{ sid: \"{sid}\", intervals: [ ")?;
         for interval in self.intervals.iter() {
             write!(f, "{interval:?}, ")?;
         }
@@ -382,9 +378,9 @@ impl Display for Gtid {
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: Test all code-path making GTID to check if path allowing bad utf8 exist.
-        let sid_gno = uuid_bin_to_hex(self.sid_gno);
-        let sid_gno = std::str::from_utf8(&sid_gno).unwrap();
-        write!(f, "{sid_gno}")?;
+        let sid = uuid_bin_to_hex(self.sid);
+        let sid = std::str::from_utf8(&sid).unwrap();
+        write!(f, "{sid}")?;
 
         for (start, end) in self.intervals.iter() {
             // TODO is it mandatory to do "excluded range" ?
@@ -403,7 +399,7 @@ impl PartialOrd for Gtid {
     ///
     /// TODO: Example.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        let ord = self.sid_gno.partial_cmp(&other.sid_gno)?;
+        let ord = self.sid.partial_cmp(&other.sid)?;
         match ord {
             ord @ (Ordering::Less | Ordering::Greater) => Some(ord),
             Ordering::Equal => self.intervals.partial_cmp(&other.intervals),
@@ -420,7 +416,7 @@ impl Ord for Gtid {
     ///
     /// TODO: Example.
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.sid_gno.cmp(&other.sid_gno) {
+        match self.sid.cmp(&other.sid) {
             ord @ (std::cmp::Ordering::Less | std::cmp::Ordering::Greater) => ord,
             std::cmp::Ordering::Equal => self.intervals.cmp(&other.intervals),
         }
@@ -532,6 +528,6 @@ mod test {
 
         assert_eq!(gtid_string, gtid.to_string());
         let debug = format!("{gtid:?}");
-        assert_eq!("Gtid { sid_gno: \"57b70f4e-20d3-11e5-a393-4a63946f7eac\", intervals: [ (1, 57), (58, 61), ] }", debug);
+        assert_eq!("Gtid { sid: \"57b70f4e-20d3-11e5-a393-4a63946f7eac\", intervals: [ (1, 57), (58, 61), ] }", debug);
     }
 }
