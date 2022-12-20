@@ -211,7 +211,7 @@ fn contains(x: &(u64, u64), y: &(u64, u64)) -> bool {
     y.0 >= x.0 && y.1 <= x.1
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum GtidError {
     /// Sid UUID where not matching
     SidNotMatching,
