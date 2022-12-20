@@ -381,7 +381,12 @@ impl Display for Gtid {
 
         for (start, end) in self.intervals.iter() {
             // TODO is it mandatory to do "excluded range" ?
-            write!(f, ":{}-{}", start, end - 1)?;
+            let end = end - 1;
+            if *start == end {
+                write!(f, ":{start}")?;
+            } else {
+                write!(f, ":{start}-{end}")?;
+            }
         }
         Ok(())
     }
@@ -473,6 +478,10 @@ mod test {
             gtid,
             Gtid::with_intervals(*b"57b70f4e-20d3-11e5-a393-4a63946f7eac", vec!((1, 57)))
         );
+
+        let gtid_str = "3e11fa47-71ca-11e1-9e33-c80aa9429562:1-3:11:47-49";
+        let gtid = Gtid::try_from(gtid_str).unwrap();
+        assert_eq!(gtid_str, gtid.to_string());
     }
 
     #[test]
