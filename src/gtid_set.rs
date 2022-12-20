@@ -2,7 +2,7 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::Gtid;
 
@@ -64,6 +64,27 @@ impl GtidSet {
     }
 }
 
+impl Display for GtidSet {
+    /// A human friendly representation of a `GtidSet`. It's a separated by comma list of Gtid.
+    ///
+    /// Format is still subject to changes.
+    ///
+    /// ```txt
+    /// 57b70f4e-20d3-11e5-a393-4a63946f7eac:1-57, 4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20"
+    /// ```
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let len = self.gtids.len();
+        for (i, gtid) in self.gtids.values().enumerate() {
+            if i != len - 1 {
+                write!(f, "{gtid}, ")?;
+            } else {
+                write!(f, "{gtid}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::Gtid;
@@ -84,5 +105,17 @@ mod test {
             .contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:1-2").unwrap()));
         assert!(!gtids
             .contains_gtid(&Gtid::try_from("deadbeef-20d3-11e5-a393-4a63946f7eac:60-99").unwrap()));
+    }
+
+    #[test]
+    fn test_equals() {
+        let gtids =
+            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20, 57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+        let gtid_array = [
+            Gtid::try_from("4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20").unwrap(),
+            Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90").unwrap(),
+        ];
+        let text_rpz = GtidSet::try_from(&gtid_array[..]).unwrap().to_string();
+        assert_eq!(text_rpz, gtids);
     }
 }
