@@ -2,15 +2,22 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::BTreeMap, fmt::Display};
 
-use crate::Gtid;
+use crate::{Gtid, GtidError};
 
+/// A GTIDSet consist of a set of single GTID or ranges of multiples `GTID`.
+///
+/// Note:
+/// When GTID sets are returned from server variables,
+/// UUIDs are in alphabetical order, and numeric intervals are merged and in ascending order.
+///
+/// It's preserved for printing purpose.
 #[derive(Debug, PartialEq, Eq)]
 pub struct GtidSet {
     /// Key: Sid value Gtid
     /// TODO only keep Intervals in value.
-    gtids: HashMap<[u8; 16], Gtid>,
+    gtids: BTreeMap<[u8; 16], Gtid>,
 }
 
 impl Default for GtidSet {
@@ -24,7 +31,7 @@ impl Default for GtidSet {
 
 impl From<&[Gtid]> for GtidSet {
     fn from(array: &[Gtid]) -> GtidSet {
-        let gtids: HashMap<[u8; 16], Gtid> = HashMap::with_capacity(array.len());
+        let gtids: BTreeMap<[u8; 16], Gtid> = BTreeMap::new();
         let mut gtids = GtidSet { gtids };
         for gtid in array {
             gtids.include_gtid(gtid);
@@ -76,7 +83,7 @@ impl Display for GtidSet {
         let len = self.gtids.len();
         for (i, gtid) in self.gtids.values().enumerate() {
             if i != len - 1 {
-                write!(f, "{gtid}, ")?;
+                write!(f, "{gtid},")?;
             } else {
                 write!(f, "{gtid}")?;
             }
@@ -108,9 +115,9 @@ mod test {
     }
 
     #[test]
-    fn test_equals() {
+    fn test_display() {
         let gtids =
-            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20, 57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20,57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
         let gtid_array = [
             Gtid::try_from("4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20").unwrap(),
             Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90").unwrap(),
