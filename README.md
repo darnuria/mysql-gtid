@@ -1,5 +1,7 @@
 ## Mysql GTID manipulation
 
+[![Rust](https://github.com/darnuria/mysql-gtid/actions/workflows/rust.yml/badge.svg)](https://github.com/darnuria/mysql-gtid/actions/workflows/rust.yml)
+
 Heavily inspired by [Python-mysql-replication](https://github.com/julien-duponchelle/python-mysql-replication/blob/main/pymysqlreplication/gtid.py).
 If I found some better implementation or algorithm or test I will contribute it
 back there.
