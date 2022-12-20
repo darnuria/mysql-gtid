@@ -63,7 +63,7 @@ impl Gtid {
         }
 
         let mut interval = *interval;
-        self.intervals.sort();
+
         // TODO: Do it in place with a filter.
         let mut new: Vec<(u64, u64)> = Vec::with_capacity(self.intervals.len());
         for current in self.intervals.iter() {
@@ -100,7 +100,6 @@ impl Gtid {
             return Ok(());
         }
 
-        self.intervals.sort();
         // TODO: Do it in place with a filter.
         let mut new: Vec<(u64, u64)> = Vec::with_capacity(self.intervals.len());
         for current in self.intervals.iter() {
