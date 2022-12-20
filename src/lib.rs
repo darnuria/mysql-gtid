@@ -332,10 +332,6 @@ fn parse_uuid(uuid: &[u8]) -> Result<[u8; 16], GtidError> {
     writer.write_all(&uuid[24..36]).unwrap();
 
     // If anything is not Hex-digit we fail.
-    if !sid_raw.iter().all(|b| b.is_ascii_hexdigit()) {
-        return Err(GtidError::ParseError);
-    }
-
     // Everything is fine let's encode into binary!
     let mut sid = [0u8; 16];
     hex::decode_to_slice(sid_raw, &mut sid).map_err(|_| GtidError::ParseError)?;
