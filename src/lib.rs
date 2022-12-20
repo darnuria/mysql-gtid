@@ -317,8 +317,9 @@ fn parse_uuid(uuid: &[u8]) -> Result<[u8; 16], GtidError> {
     }
 
     // Assert that we have `-` in the right places.
-    if uuid[8] != b'-' && uuid[13] != b'-' && uuid[18] != b'-' && uuid[23] != b'-' {
-        return Err(GtidError::ParseError);
+    match (uuid[8], uuid[13], uuid[18], uuid[23]) {
+        (b'-', b'-', b'-', b'-') => {}
+        _ => return Err(GtidError::ParseError),
     }
 
     let mut sid_raw = [0u8; 32];
@@ -421,7 +422,7 @@ impl Ord for Gtid {
 
 #[cfg(test)]
 mod test {
-    use super::parse_interval;
+    use super::{parse_interval, parse_uuid};
     use crate::{Gtid, GtidError};
     use std::io::Cursor;
 
@@ -436,6 +437,27 @@ mod test {
         assert_eq!(parse_interval("0-1"), Err(GtidError::ZeroInInterval));
         assert_eq!(parse_interval("1-0"), Err(GtidError::ZeroInInterval));
         assert_eq!(parse_interval("58-1"), Err(GtidError::IntervalBadlyOrdered));
+    }
+
+    #[test]
+    fn test_parse_uuid() {
+        assert!(parse_uuid(b"57b70f4e-20d3-11e5-a393-4a63946f7eac").is_ok());
+        assert!(parse_uuid(b"57B70F4E-20D3-11E5-A393-4A63946F7EAC").is_ok());
+        assert_eq!(
+            parse_uuid(b"57B70F4E@20D3@11E5@A393-4A63946F7EAC"),
+            Err(GtidError::ParseError)
+        );
+        assert_eq!(
+            parse_uuid(b"XXXXXXXX@20D3@11E5@A393-4A63946F7EAC"),
+            Err(GtidError::ParseError)
+        );
+        assert_eq!(
+            parse_uuid(b"XXXXXXXX-20D3-11E5-A393-4A63946F7EAC"),
+            Err(GtidError::ParseError)
+        );
+        assert_eq!(parse_uuid(b"XXXXXXXX"), Err(GtidError::ParseError));
+        assert_eq!(parse_uuid(b"57B70F4E"), Err(GtidError::ParseError));
+        assert_eq!(parse_uuid(b"----"), Err(GtidError::ParseError));
     }
 
     #[test]
