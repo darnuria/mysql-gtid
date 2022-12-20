@@ -51,6 +51,16 @@ impl GtidSet {
         }
     }
 
+    pub fn include_gtid_consume(&mut self, gtid: Gtid) {
+        match self.gtids.get_mut(&gtid.sid) {
+            // Unwraping is safe we work on the same sid
+            Some(g) => g.include_transactions(&gtid).unwrap(),
+            None => {
+                self.gtids.insert(gtid.sid, gtid);
+            }
+        }
+    }
+
     pub fn contains_gtid(&self, gtid: &Gtid) -> bool {
         match self.gtids.get(&gtid.sid) {
             Some(found) => found.contains(gtid),
@@ -92,6 +102,32 @@ impl Display for GtidSet {
     }
 }
 
+impl TryFrom<&str> for GtidSet {
+    /// Parse a GtidSet from mysql text representation with or without newline.
+    /// Todo use nom?
+    /// TODO fix overeading.
+    /// `4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90`
+    /// pass and shall not
+    fn try_from(gtid_set: &str) -> Result<GtidSet, GtidError> {
+        let mut gtids = GtidSet {
+            gtids: BTreeMap::new(),
+        };
+
+        for gtid in gtid_set.split(',') {
+            // Don't care for space or \n.
+            let gtid = gtid.trim_matches(|c| c == ' ' || c == '\n');
+            let end = gtid.len();
+            let end = if gtid.ends_with(',') { end - 1 } else { end };
+            let gtid = Gtid::try_from(&gtid[..end])?;
+            gtids.include_gtid_consume(gtid);
+        }
+
+        Ok(gtids)
+    }
+
+    type Error = GtidError;
+}
+
 #[cfg(test)]
 mod test {
     use crate::Gtid;
@@ -124,5 +160,39 @@ mod test {
         ];
         let text_rpz = GtidSet::try_from(&gtid_array[..]).unwrap().to_string();
         assert_eq!(text_rpz, gtids);
+    }
+
+    #[test]
+    fn test_parse_alone() {
+        let gtids = "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+        let text_rpz = GtidSet::try_from(gtids).unwrap().to_string();
+        assert_eq!(text_rpz, gtids);
+    }
+    #[test]
+
+    fn test_parse_multiples() {
+        let gtids =
+            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20,57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+        let text_rpz = GtidSet::try_from(gtids).unwrap().to_string();
+        assert_eq!(text_rpz, gtids);
+    }
+
+    #[test]
+    fn test_parse_newline() {
+        let gtids =
+        "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20,\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+        let text_rpz = GtidSet::try_from(gtids).unwrap().to_string();
+        assert_eq!(text_rpz, "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20,57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90");
+    }
+
+    #[test]
+    #[ignore = "Fix overeading"]
+    fn test_parse_fail() {
+        let gtids =
+        "-";
+        assert!(GtidSet::try_from(gtids).is_err());
+        let gtids =
+        "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+        assert!(dbg!(GtidSet::try_from(gtids)).is_err());
     }
 }

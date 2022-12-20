@@ -261,6 +261,9 @@ fn parse_interval(interval: &str) -> Result<(u64, u64), GtidError> {
 
 impl TryFrom<&str> for Gtid {
     /// Parse a GTID from mysql text representation.
+    /// TODO fix overeading.
+    /// `4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90`
+    /// pass and shall not
     fn try_from(gtid: &str) -> Result<Gtid, GtidError> {
         let raw = &gtid.as_bytes().get(0..36).ok_or(GtidError::ParseError)?;
         let sid = parse_uuid(raw)?;
@@ -556,5 +559,16 @@ mod test {
         assert_eq!(gtid_string, gtid.to_string());
         let debug = format!("{gtid:?}");
         assert_eq!("Gtid { sid: \"57b70f4e-20d3-11e5-a393-4a63946f7eac\", intervals: [ (1, 57), (58, 61), ] }", debug);
+    }
+
+    #[test]
+    #[ignore = "Fix overeading"]
+    fn test_parse_fail() {
+        let gtids =
+        "-";
+        assert!(Gtid::try_from(gtids).is_err());
+        let gtids =
+        "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+        assert!(Gtid::try_from(gtids).is_err());
     }
 }
