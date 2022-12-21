@@ -326,12 +326,19 @@ impl TryFrom<&str> for Gtid {
         let sid = parse_uuid(raw)?;
 
         let rest = &gtid[36..];
-        let intervals = rest
-            .split(':')
-            .skip(1)
-            .filter_map(|x| parse_interval(x).ok())
-            .collect::<Vec<_>>();
 
+        let mut intervals = Vec::new();
+        for interval in rest.split(':').skip(1) {
+            let interval = parse_interval(interval)?;
+            intervals.push(interval);
+        }
+        intervals.sort();
+        if intervals
+            .windows(2)
+            .any(|tuples| overlap(&tuples[0], &tuples[1]))
+        {
+            return Err(GtidError::OverlapingInterval);
+        }
         Ok(Gtid { sid, intervals })
     }
 
@@ -748,7 +755,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Fix overeading"]
     fn test_parse_fail() {
         let gtids = "-";
         assert!(Gtid::try_from(gtids).is_err());
@@ -758,17 +764,13 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Fix overeading"]
-    fn test_parse_fails() {
-        let gtids =
-            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:0-1";
+    fn test_parse_strict() {
+        let gtids = "57b70f4e-20d3-11e5-a393-4a63946f7eac:0-1";
         assert_eq!(Gtid::try_from(gtids), Err(GtidError::ZeroInInterval));
-        let gtids =
-            "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:2-1";
+        let gtids = "4350f323-7565-4e59-8763-4b1b83a0ce0e:20-1";
         assert_eq!(Gtid::try_from(gtids), Err(GtidError::IntervalBadlyOrdered));
 
-        let gtids =
-        "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-5:2-3";
+        let gtids = "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-5:2-3";
         assert_eq!(Gtid::try_from(gtids), Err(GtidError::OverlapingInterval));
     }
 }

@@ -2,7 +2,7 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
-use std::{collections::BTreeMap, error::Error, fmt::Display, io};
+use std::{collections::BTreeMap, fmt::Display, io};
 
 use crate::{Gtid, GtidError};
 
@@ -283,7 +283,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Fix overeading"]
     fn test_parse_fail() {
         let gtids = "-";
         assert!(GtidSet::try_from(gtids).is_err());
