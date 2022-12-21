@@ -33,8 +33,7 @@ impl Gtid {
 
     /// SID as textual byte array
     pub fn sid_as_bytes(&self) -> [u8; 36] {
-        let sid = uuid_bin_to_hex(self.sid);
-        sid
+        uuid_bin_to_hex(self.sid)
     }
 
     /// SID as textual UUID.
