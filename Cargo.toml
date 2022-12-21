@@ -1,8 +1,13 @@
 [package]
 name = "mysql-gtid"
-version = "0.1.0"
+# Still unstable a lot.
+version = "0.2.0"
+# Not stable enougth to public wait a little bit.
+publish = false
+# MSRV - Minimum Supported Rust Version ?
+rust-version = "1.65"
 edition = "2021"
-authors = ["Axel Viala <axel.viala@darnuria.eu"]
+authors = ["Axel Viala <axel.viala@darnuria.eu>"]
 description = "Mysql GTID management directly inspired by python-mysql-replication."
 readme = "README.md"
 keywords = ["mysql"]
