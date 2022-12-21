@@ -2,7 +2,7 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
-use std::{collections::BTreeMap, fmt::Display};
+use std::{collections::BTreeMap, error::Error, fmt::Display, io};
 
 use crate::{Gtid, GtidError};
 
@@ -79,6 +79,65 @@ impl GtidSet {
             self.include_gtid(g);
         }
     }
+
+    /// Serialize to binary a [GtidSet]
+    ///
+    /// ## Wire format
+    ///
+    /// Warning: Subject to change
+    ///
+    /// Bytes are in **little endian**.
+    ///
+    /// - `n_sid`: u64 is the number of Gtid to read
+    /// - `Gtid`: `n_sid` * `Gtid_encoded_size` times See [Gtid] documentation for details.
+    /// ```txt
+    /// Alligned on u64 bit
+    /// +-+-+-+-+-+-+-+-+-+-+
+    /// | n_gtid u64        |
+    /// |                   |
+    /// +-+-+-+-+-+-+-+-+-+-+
+    /// | Gtid                - Repeated n_gtid
+    /// - - - - - - - - - - -   times
+    /// ```
+    pub fn serialize<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
+        // Numbers of Gtid to encode
+        writer.write_all(&(self.gtids.len() as u64).to_le_bytes())?;
+
+        // Encode the Gtid themselfs
+        for gtid in self.gtids.values() {
+            gtid.serialize(&mut writer)?;
+        }
+        Ok(())
+    }
+
+    /// Parse from binary a [GtidSet]
+    ///
+    /// For binary format description see [GtidSet::serialize] documentation
+    ///
+    /// ## Errors
+    ///
+    /// In addition to all of the IO usual folklore
+    ///
+    /// Returns `std::io::ErrorKind::AlreadyExists`
+    /// if a sid already parsed is encountered twice.
+    pub fn parse<R: io::Read>(reader: &mut R) -> io::Result<GtidSet> {
+        // Get the numbers of gtid to read
+        let mut gtids_len = [0u8; 8];
+        reader.read_exact(&mut gtids_len)?;
+        let gtids_len = u64::from_le_bytes(gtids_len) as usize;
+
+        // Parses the gtid gtids_len times
+        // and store them in the Btree.
+        let mut gtids = BTreeMap::new();
+        for _ in 0..gtids_len {
+            let gtid = Gtid::parse(reader)?;
+            if let Some(_) = gtids.insert(gtid.sid, gtid) {
+                return Err(std::io::ErrorKind::AlreadyExists.into());
+            }
+        }
+
+        Ok(GtidSet { gtids })
+    }
 }
 
 impl Display for GtidSet {
@@ -130,6 +189,8 @@ impl TryFrom<&str> for GtidSet {
 
 #[cfg(test)]
 mod test {
+    use std::io::Cursor;
+
     use crate::Gtid;
 
     use super::GtidSet;
@@ -229,5 +290,15 @@ mod test {
         let gtids =
         "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
         assert!(dbg!(GtidSet::try_from(gtids)).is_err());
+    }
+
+    #[test]
+    fn test_encode_decode() {
+        let payload = "4350f323-7565-4e59-8763-4b1b83a0ce0e:1-20,\n57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:60-90";
+        let gtid = GtidSet::try_from(payload).unwrap();
+        let mut buffer = Vec::with_capacity(256);
+        gtid.serialize(&mut buffer).unwrap();
+        let decoded = GtidSet::parse(&mut Cursor::new(buffer)).unwrap();
+        assert_eq!(decoded, gtid);
     }
 }

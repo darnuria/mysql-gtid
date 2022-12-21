@@ -176,7 +176,12 @@ impl Gtid {
         Ok(())
     }
 
-    pub fn parse<R: io::Read>(mut reader: R) -> io::Result<Gtid> {
+    /// Parse from binary a [Gtid]
+    ///
+    /// For binary format description see [Gtid::serialize]
+    ///
+    /// Known issue: sid need to be validated and not accepted blindy.
+    pub fn parse<R: io::Read>(reader: &mut R) -> io::Result<Gtid> {
         // Reading and decoding SID
         let mut sid = [0u8; 16];
         reader.read_exact(&mut sid)?;
@@ -207,6 +212,33 @@ impl Gtid {
         Ok(Gtid { sid, intervals })
     }
 
+    /// Serialize to binary a [Gtid]
+    ///
+    /// ## Wire format
+    ///
+    /// Warning: Subject to change
+    ///
+    /// Bytes are in **little endian**.
+    ///
+    /// - `sid`: `16 * u8` as a `[u8;16]`
+    /// - `intervals_len`: `8 * u8` as a u64
+    ///
+    /// `interval_len` times:
+    ///     - `start`: `8 * u8` as `u64` start of interval
+    ///     - `end`: `8 * u8` as u64 end of interval
+    /// ```txt
+    /// Alligned on u64 bit
+    /// +-+-+-+-+-+-+-+-+-+-+
+    /// | sid [16;u8]       |
+    /// |                   |
+    /// +-+-+-+-+-+-+-+-+-+-+
+    /// | intervals_len u64 |
+    /// +-+-+-+-+-+-+-+-+-+-+
+    /// |start u64              \
+    /// - - - - - - - - - - -    + Repeated
+    /// |stop u64               /  interval_len
+    /// - - - - - - - - - - -      times
+    /// ```
     pub fn serialize<W: io::Write>(&self, mut writer: W) -> io::Result<()> {
         // Sid encoded.
         writer.write_all(&self.sid)?;
@@ -641,8 +673,8 @@ mod test {
         let gtid = Gtid::try_from("57b70f4e-20d3-11e5-a393-4a63946f7eac:1-56:59-69").unwrap();
         let mut buffer = Vec::with_capacity(64);
         gtid.serialize(&mut buffer).unwrap();
-        let decoded = Gtid::parse(Cursor::new(buffer)).unwrap();
-        assert_eq!(decoded, gtid)
+        let decoded = Gtid::parse(&mut Cursor::new(buffer)).unwrap();
+        assert_eq!(decoded, gtid);
     }
 
     #[test]
