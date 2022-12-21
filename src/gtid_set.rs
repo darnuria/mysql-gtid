@@ -122,9 +122,7 @@ impl GtidSet {
     /// if a sid already parsed is encountered twice.
     pub fn parse<R: io::Read>(reader: &mut R) -> io::Result<GtidSet> {
         // Get the numbers of gtid to read
-        let mut gtids_len = [0u8; 8];
-        reader.read_exact(&mut gtids_len)?;
-        let gtids_len = u64::from_le_bytes(gtids_len) as usize;
+        let gtids_len = crate::read_u64_le(reader)? as usize;
 
         // Parses the gtid gtids_len times
         // and store them in the Btree.

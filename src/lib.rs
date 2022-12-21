@@ -203,21 +203,14 @@ impl Gtid {
         reader.read_exact(&mut sid)?;
 
         // Get the number of interval to read
-        let mut interval_len = [0u8; 8];
-        reader.read_exact(&mut interval_len)?;
-        let interval_len = u64::from_le_bytes(interval_len) as usize;
+        let interval_len = read_u64_le(reader)? as usize;
 
         // TODO: maybe do something to avoid reading an absurd len?
-
         // Decode the intervals encoded as u64
         let mut intervals = Vec::with_capacity(interval_len.clamp(4, 64));
         for _ in 0..interval_len {
-            let mut start = [0u8; 8];
-            reader.read_exact(&mut start)?;
-            let start = u64::from_le_bytes(start);
-            let mut end = [0u8; 8];
-            reader.read_exact(&mut end)?;
-            let end = u64::from_le_bytes(end);
+            let start = read_u64_le(reader)?;
+            let end = read_u64_le(reader)?;
             intervals.push((start, end))
         }
 
@@ -279,6 +272,13 @@ fn overlap(x: &(u64, u64), y: &(u64, u64)) -> bool {
 #[inline]
 fn contains(x: &(u64, u64), y: &(u64, u64)) -> bool {
     y.0 >= x.0 && y.1 <= x.1
+}
+
+#[inline]
+fn read_u64_le<R: io::Read>(reader: &mut R) -> io::Result<u64> {
+    let mut buff = [0u8; 8];
+    reader.read_exact(&mut buff)?;
+    Ok(u64::from_le_bytes(buff))
 }
 
 #[derive(Debug, PartialEq, Eq)]
