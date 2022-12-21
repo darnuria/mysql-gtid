@@ -131,7 +131,7 @@ impl GtidSet {
         let mut gtids = BTreeMap::new();
         for _ in 0..gtids_len {
             let gtid = Gtid::parse(reader)?;
-            if let Some(_) = gtids.insert(gtid.sid, gtid) {
+            if gtids.insert(gtid.sid, gtid).is_some() {
                 return Err(std::io::ErrorKind::AlreadyExists.into());
             }
         }
