@@ -26,6 +26,23 @@ pub struct Gtid {
 }
 
 impl Gtid {
+    /// SID as binary representation
+    pub fn sid(&self) -> [u8; 16] {
+        self.sid
+    }
+
+    /// SID as textual byte array
+    pub fn sid_as_bytes(&self) -> [u8; 36] {
+        let sid = uuid_bin_to_hex(self.sid);
+        sid
+    }
+
+    /// SID as textual UUID.
+    pub fn sid_as_string(&self) -> String {
+        let sid: [u8; 36] = uuid_bin_to_hex(self.sid);
+        String::from_utf8_lossy(&sid[..]).to_string()
+    }
+
     /// Unsable may be removed.
     pub fn raw_gtid_unchecked(sid: [u8; 36]) -> Result<Gtid, GtidError> {
         let sid = parse_uuid(&sid)?;
