@@ -26,6 +26,18 @@ pub struct Gtid {
 }
 
 impl Gtid {
+    /// Construct a Gtid from a SID and a GNO, you mostly want to use it with `GtidEvent` type of
+    /// [Mysql-common](https://github.com/blackbeam/rust_mysql_common/blob/master/src/binlog/events/gtid_event.rs) crate.
+    ///
+    /// Note that a gno MUST BE non zero.
+    pub fn from_sid_gno(sid: [u8; 16], gno: u64) -> Gtid {
+        debug_assert!(gno != 0);
+        Gtid {
+            sid,
+            intervals: vec![(gno, gno + 1)],
+        }
+    }
+
     /// SID as binary representation
     pub fn sid(&self) -> [u8; 16] {
         self.sid
