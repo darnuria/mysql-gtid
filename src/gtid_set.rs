@@ -138,8 +138,8 @@ impl GtidSet {
     }
 
     /// Iterator over raw values useful for bridging with `Sid` type in mysql crate.
-    pub fn into_raw(self) -> impl IntoIterator<Item = ([u8; 16], Vec<(u64, u64)>)> {
-        self.gtids.into_values().map(|gtid| gtid.into_raw())
+    pub fn into_raw(self) -> Vec<([u8; 16], Vec<(u64, u64)>)> {
+        self.gtids.into_values().map(|gtid| gtid.into_raw()).collect()
     }
 }
 
