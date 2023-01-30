@@ -2,9 +2,9 @@
 // Done on free time inspired a lot by pymysqlreplication own implementation.
 // Licence MIT + APACHE 2.
 
-use std::{collections::BTreeMap, fmt::Display, io};
-
 use crate::{Gtid, GtidError};
+use std::iter::Iterator;
+use std::{collections::BTreeMap, fmt::Display, io};
 
 /// A GTIDSet consist of a set of single GTID or ranges of multiples `GTID`.
 ///
@@ -135,6 +135,11 @@ impl GtidSet {
         }
 
         Ok(GtidSet { gtids })
+    }
+
+    /// Iterator over raw values useful for bridging with `Sid` type in mysql crate.
+    pub fn into_raw(self) -> impl IntoIterator<Item = ([u8; 16], Vec<(u64, u64)>)> {
+        self.gtids.into_values().map(|gtid| gtid.into_raw())
     }
 }
 

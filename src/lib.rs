@@ -274,6 +274,11 @@ impl Gtid {
         }
         Ok(())
     }
+
+    /// Release of raw values useful for bridging with `Sid` type in mysql crate.
+    pub fn into_raw(self) -> ([u8; 16], Vec<(u64, u64)>) {
+        (self.sid, self.intervals)
+    }
 }
 
 #[inline]
