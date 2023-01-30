@@ -13,7 +13,7 @@ use std::{collections::BTreeMap, fmt::Display, io};
 /// UUIDs are in alphabetical order, and numeric intervals are merged and in ascending order.
 ///
 /// It's preserved for printing purpose.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct GtidSet {
     /// Key: Sid value Gtid
     /// TODO only keep Intervals in value.
