@@ -11,7 +11,7 @@ a lot of testing about and improve some bits.
 
 ## Current state
 
-Toy project but somewhat usable.
+Toy project but usable let me know if it's useful to you !
 
 ## Objectives
 

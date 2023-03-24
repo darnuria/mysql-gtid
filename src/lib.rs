@@ -248,7 +248,7 @@ impl Gtid {
     ///     - `start`: `8 * u8` as `u64` start of interval
     ///     - `end`: `8 * u8` as u64 end of interval
     /// ```txt
-    /// Alligned on u64 bit
+    /// Aligned on u64 bit
     /// +-+-+-+-+-+-+-+-+-+-+
     /// | sid [16;u8]       |
     /// |                   |
