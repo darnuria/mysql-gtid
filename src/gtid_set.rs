@@ -1,6 +1,6 @@
 // Author Axel Viala <axel.viala@darnuria.eu>
-// Done on free time inspired a lot by pymysqlreplication own implementation.
-// Licence MIT + APACHE 2.
+// Done on free time inspired a lot by pymysql replication own implementation.
+// License MIT + APACHE 2.
 
 use crate::{Gtid, GtidError};
 use std::iter::Iterator;
@@ -43,7 +43,7 @@ impl From<&[Gtid]> for GtidSet {
 impl GtidSet {
     pub fn include_gtid(&mut self, gtid: &Gtid) {
         match self.gtids.get_mut(&gtid.sid) {
-            // Unwraping is safe we work on the same sid
+            // Unwrapping is safe we work on the same sid
             Some(g) => g.include_transactions(gtid).unwrap(),
             None => {
                 self.gtids.insert(gtid.sid, gtid.clone());
@@ -53,7 +53,7 @@ impl GtidSet {
 
     pub fn include_gtid_consume(&mut self, gtid: Gtid) {
         match self.gtids.get_mut(&gtid.sid) {
-            // Unwraping is safe we work on the same sid
+            // Unwrapping is safe we work on the same sid
             Some(g) => g.include_transactions(&gtid).unwrap(),
             None => {
                 self.gtids.insert(gtid.sid, gtid);
@@ -91,7 +91,7 @@ impl GtidSet {
     /// - `n_sid`: u64 is the number of Gtid to read
     /// - `Gtid`: `n_sid` * `Gtid_encoded_size` times See [Gtid] documentation for details.
     /// ```txt
-    /// Alligned on u64 bit
+    /// Aligned on u64 bit
     /// +-+-+-+-+-+-+-+-+-+-+
     /// | n_gtid u64        |
     /// |                   |
@@ -139,7 +139,10 @@ impl GtidSet {
 
     /// Iterator over raw values useful for bridging with `Sid` type in mysql crate.
     pub fn into_raw(self) -> Vec<([u8; 16], Vec<(u64, u64)>)> {
-        self.gtids.into_values().map(|gtid| gtid.into_raw()).collect()
+        self.gtids
+            .into_values()
+            .map(|gtid| gtid.into_raw())
+            .collect()
     }
 }
 

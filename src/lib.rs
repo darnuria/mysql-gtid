@@ -54,7 +54,7 @@ impl Gtid {
         String::from_utf8_lossy(&sid[..]).to_string()
     }
 
-    /// Unsable may be removed.
+    /// Unstable may be removed.
     pub fn raw_gtid_unchecked(sid: [u8; 36]) -> Result<Gtid, GtidError> {
         let sid = parse_uuid(&sid)?;
 
@@ -115,7 +115,7 @@ impl Gtid {
         }
 
         if self.intervals.iter().any(|x| overlap(x, interval)) {
-            return Err(GtidError::OverlapingInterval);
+            return Err(GtidError::OverlappingInterval);
         }
 
         self.add_interval_unchecked(interval);
@@ -144,7 +144,7 @@ impl Gtid {
 
     /// Remove an interval from intervals.
     ///
-    /// Does not check for Zero in internval, interval badly ordered or overlap.
+    /// Does not check for Zero in interval, interval badly ordered or overlap.
     /// Assume interval is well formed.
     pub fn sub_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
         if interval.0 == 0 || interval.1 == 0 {
@@ -208,7 +208,7 @@ impl Gtid {
     ///
     /// For binary format description see [Gtid::serialize]
     ///
-    /// Known issue: sid need to be validated and not accepted blindy.
+    /// Known issue: sid need to be validated and not accepted blindly.
     pub fn parse<R: io::Read>(reader: &mut R) -> io::Result<Gtid> {
         // Reading and decoding SID
         let mut sid = [0u8; 16];
@@ -267,7 +267,7 @@ impl Gtid {
         // Encode in little endian the len
         writer.write_all(&(self.intervals.len() as u64).to_le_bytes())?;
 
-        // Encode the intervals itselfs in little endian (start, stop)
+        // Encode the intervals themselves in little endian (start, stop)
         for (start, end) in self.intervals.iter() {
             writer.write_all(&start.to_le_bytes())?;
             writer.write_all(&end.to_le_bytes())?;
@@ -305,7 +305,7 @@ pub enum GtidError {
     /// SID or Interval is in invalid form
     ParseError,
     /// Intervals overlaps
-    OverlapingInterval,
+    OverlappingInterval,
     /// Interval must be Ordered (sorted)
     IntervalBadlyOrdered,
     /// Interval shall not contain 0
@@ -323,7 +323,7 @@ impl Display for GtidError {
 }
 
 /// Parse a human-generated interval, end value will be incremented to match mysql internals.
-/// Exemple if given `1,2` will output `(1, 3)`.
+/// Example if given `1,2` will output `(1, 3)`.
 ///
 /// ```ignore
 /// # use crate::parse_interval;
@@ -370,7 +370,7 @@ impl TryFrom<&str> for Gtid {
             .windows(2)
             .any(|tuples| overlap(&tuples[0], &tuples[1]))
         {
-            return Err(GtidError::OverlapingInterval);
+            return Err(GtidError::OverlappingInterval);
         }
         Ok(Gtid { sid, intervals })
     }
@@ -604,7 +604,7 @@ mod test {
 
         assert_eq!(
             gtid.add_interval(&(50, 51)),
-            Err(GtidError::OverlapingInterval)
+            Err(GtidError::OverlappingInterval)
         );
 
         assert_eq!(gtid.intervals, [(1, 57)]);
@@ -804,6 +804,6 @@ mod test {
         assert_eq!(Gtid::try_from(gtids), Err(GtidError::IntervalBadlyOrdered));
 
         let gtids = "57b70f4e-20d3-11e5-a393-4a63946f7eac:1-5:2-3";
-        assert_eq!(Gtid::try_from(gtids), Err(GtidError::OverlapingInterval));
+        assert_eq!(Gtid::try_from(gtids), Err(GtidError::OverlappingInterval));
     }
 }
