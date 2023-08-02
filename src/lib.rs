@@ -82,26 +82,93 @@ impl Gtid {
 
     /// Add an interval but does not check assume interval is correctly formed
     fn add_interval_unchecked(&mut self, interval: &(u64, u64)) {
-        let mut interval = *interval;
+        let interval = *interval;
 
-        // TODO: Do it in place with a filter.
-        let mut new: Vec<(u64, u64)> = Vec::with_capacity(self.intervals.len());
-        for current in self.intervals.iter() {
-            if interval.0 == current.1 {
-                interval = (current.0, interval.1);
-                continue;
+        // self.intervals was empty
+        if self.intervals.is_empty() {
+            self.intervals.push(interval);
+            return;
+        }
+        if let Some(&first) = self.intervals.first() {
+            // if interval is strictly before intervals
+            if interval.1 < first.0 {
+                self.intervals.insert(0, interval);
+                return;
             }
 
-            if interval.1 == current.0 {
-                interval = (interval.0, current.1);
-                continue;
+            // if interval merge before interval
+            if interval.1 == first.0 {
+                // unwrapping is ok as intervals is not empty
+
+                let first = self.intervals.first_mut().unwrap();
+                *first = (interval.0, first.1);
+                return;
             }
-            new.push(*current);
         }
 
-        new.push(interval);
-        new.sort();
-        self.intervals = new;
+        if let Some(&last) = self.intervals.last() {
+            if interval.0 > last.1 {
+                self.intervals.push(interval);
+                return;
+            }
+
+            if interval.0 == last.1 {
+                // unwrapping is ok as intervals is not empty
+
+                let last = self.intervals.last_mut().unwrap();
+                *last = (last.0, interval.1);
+                return;
+            }
+        }
+
+        match self
+            .intervals
+            .binary_search_by(|elem| elem.1.cmp(&interval.0))
+        {
+            Err(idx) => {
+                // error case so it won't merge with previous
+                // it may merge before the item currently at idx
+                if idx == self.intervals.len() {
+                    // previously treated
+                    unreachable!()
+                }
+                // we can unwrap as the case interval is after the last element is treated before
+                let next = self.intervals.get(idx).unwrap();
+                // interval merges with next
+                if next.0 == interval.1 {
+                    *self.intervals.get_mut(idx).unwrap() = (interval.0, next.1);
+                } else {
+                    // just add interval, nothing to merge
+                    self.intervals.insert(idx, interval);
+                }
+            }
+            Ok(idx) => {
+                // ok case it will merge with current
+                // it may merge with next
+
+                let before = self.intervals[idx];
+                let after = self.intervals[idx + 1];
+
+                // interval merges with before and after
+                if interval.0 == before.1 && interval.1 == after.0 {
+                    *self.intervals.get_mut(idx).unwrap() = (before.0, after.1);
+                    self.intervals.remove(idx + 1);
+                } else if
+                // interval merges with before
+                interval.0 == before.1 {
+                    *self.intervals.get_mut(idx).unwrap() = (before.0, interval.1);
+                } else if
+                // interval merges with after
+                interval.1 == after.0 {
+                    unreachable!("should have been treated in the error branch before");
+                    // *self.intervals.get_mut(idx + 1).unwrap() = (interval.0, after.1);
+                } else {
+                    // interval does not merge
+                    unreachable!("should have been treated in the error branch before");
+                    //  self.intervals.insert(idx + 1, interval)
+                }
+            }
+        }
     }
 
     /// Add a raw interval into the gtid.
