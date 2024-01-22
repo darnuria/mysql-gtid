@@ -82,29 +82,88 @@ impl Gtid {
 
     /// Add an interval but does not check assume interval is correctly formed
     fn add_interval_unchecked(&mut self, interval: &(u64, u64)) {
-        let mut interval = *interval;
+        let interval = *interval;
 
-        // TODO: Do it in place with a filter.
-        let mut new: Vec<(u64, u64)> = Vec::with_capacity(self.intervals.len());
-        for current in self.intervals.iter() {
-            if interval.0 == current.1 {
-                interval = (current.0, interval.1);
-                continue;
+        // self.intervals was empty
+        if self.intervals.is_empty() {
+            self.intervals.push(interval);
+            return;
+        }
+        if let Some(first) = self.intervals.first_mut() {
+            // if interval is strictly before intervals
+            if interval.1 < first.0 {
+                self.intervals.insert(0, interval);
+                return;
             }
 
-            if interval.1 == current.0 {
-                interval = (interval.0, current.1);
-                continue;
+            // if interval merge before interval
+            if interval.1 == first.0 {
+                first.0 = interval.0;
+                return;
             }
-            new.push(*current);
         }
 
-        new.push(interval);
-        new.sort();
-        self.intervals = new;
+        if let Some(last) = self.intervals.last_mut() {
+            if interval.0 > last.1 {
+                self.intervals.push(interval);
+                return;
+            }
+
+            if interval.0 == last.1 {
+                last.1 = interval.1;
+                return;
+            }
+        }
+
+        match self
+            .intervals
+            .binary_search_by(|elem| elem.1.cmp(&interval.0))
+        {
+            Err(idx) => {
+                // there is always a next element, otherwise  we fall
+                // into the previous if let some last case
+                let next = &mut self.intervals[idx];
+                // interval merges with next
+                if next.0 == interval.1 {
+                    next.0 = interval.0;
+                } else {
+                    // just add interval, nothing to merge
+                    self.intervals.insert(idx, interval);
+                }
+            }
+            Ok(idx) => {
+                // ok case it will merge with current
+                // it may merge with next
+
+                let before = self.intervals[idx];
+                let after = self.intervals[idx + 1];
+
+                // interval merges with before and after
+                if interval.0 == before.1 && interval.1 == after.0 {
+                    self.intervals[idx] = (before.0, after.1);
+                    self.intervals.remove(idx + 1);
+                } else if
+                // interval merges with before
+                interval.0 == before.1 {
+                    self.intervals[idx] = (before.0, interval.1);
+                } else if
+                // interval merges with after
+                interval.1 == after.0 {
+                    unreachable!("should have been treated in the error branch before: interval merges with after");
+                } else {
+                    // interval does not merge
+                    unreachable!("should have been treated in the error branch before: interval does not merge");
+                }
+            }
+        }
     }
 
     /// Add a raw interval into the gtid.
+    ///
+    /// ## Safety
+    ///
+    /// Gtids must not overlap, and be ordered.
+    /// see https://dev.mysql.com/doc/refman/8.0/en/replication-gtids-concepts.html
     fn add_interval(&mut self, interval: &(u64, u64)) -> Result<(), GtidError> {
         if interval.0 == 0 || interval.1 == 0 {
             return Err(GtidError::ZeroInInterval);
